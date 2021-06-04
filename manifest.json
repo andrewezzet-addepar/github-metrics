@@ -1,0 +1,17 @@
+{
+    "version": "0.1",
+    "manifest_version": 2,
+    "name": "GithubMetrics",
+    "description": "Fetches metrics on PR's",
+    "icons": {
+      "128": "./assets/icon-128.png"
+    },
+    "content_scripts": [
+      {
+        "js": ["content_script.js"],
+        "matches": [
+          "https://github.com/Addepar/*/pulls"
+        ]
+      }
+    ]
+  }
