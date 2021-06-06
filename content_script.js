@@ -4,12 +4,12 @@ const TESTS_SELECTOR = `#qunit-tests > li > strong:not([${LINK_ATTR}])`;
 const PASSED_TESTS_SELECTOR = `#qunit-tests > li.pass > strong[${LINK_ATTR}]`;
 
 const teamMembers = [
-  // 'twesely',
-  // 'aberman-addepar',
+  'twesely',
+  'aberman-addepar',
   'addemike',
   'andrewezzet-addepar',
-  // 'c69-addepar',
-  // 'john-addepar'
+  'c69-addepar',
+  'john-addepar'
 ];
 
 function addMetricsButton() {
@@ -102,22 +102,39 @@ async function runMetrics2() {
 
   let metrics = new Metrics(data);
 
-  let result = {};
-
-  for (let username of teamMembers) {
-    result[username] = metrics.getUserMetrics(username, { categorizeBy: 'repo' });
+  let resultsByRepo = {};
+  for (let repo of REPOS) {
+    resultsByRepo[repo] = metrics.getRepoMetrics(repo, { categorizeBy: 'author' });
   }
+  resultsByRepo.all = aggregateMetrics(resultsByRepo);
 
-  result.all = aggregateMetrics(result);
+  let resultsByAuthor = {};
+  for (let username of teamMembers) {
+    resultsByAuthor[username] = metrics.getUserMetrics(username, { categorizeBy: 'repo' });
+  }
+  resultsByAuthor.all = aggregateMetrics(resultsByAuthor);
 
-  console.log(result);
-  console.log(JSON.stringify(result, null, 2));
-  renderMetrics(result, 'author');
+  console.log(resultsByRepo, resultsByAuthor);
+  console.log(JSON.stringify(resultsByRepo, null, 2));
+  console.log(JSON.stringify(resultsByAuthor, null, 2));
+  renderMetrics(
+    { title: 'Results by Repo', metrics: resultsByRepo }, 
+    { title: 'Results by Author', metrics: resultsByAuthor },
+  );
 }
 
-function renderMetrics(metrics, categorizedBy) {
+function aggregateMetrics(metrics) {
+  let total = { counts: new CountMetrics(), timings: new TimingMetrics() }
+  for (let category of Object.keys(metrics)) {
+    let { counts, timings } = metrics[category];
+    total.counts.addCounts(counts.all);
+    total.timings.addTimings(timings.all);
+  }
+  return total;
+}
+
+function renderMetrics(...titledMetrics) {
   let modal = document.createElement('div');
-  let columns = [categorizedBy].concat(TAGS, TIMINGS);
   modal.style = `
     position: absolute; 
     top: 0;
@@ -126,14 +143,38 @@ function renderMetrics(metrics, categorizedBy) {
     justify-content: center;
     width: 100%;
     height: 100%;
+    background: #00000033;
   `;
 
+  modal.appendChild(MetricsModal(titledMetrics));
+  document.querySelector('body').appendChild(modal);
+}
+
+function MetricsModal(titledMetrics) {
+  let modalDiv = document.createElement('div');
+  modalDiv.style = `
+    background: white;
+    padding: 8px 16px 16px;
+    border: 4px solid aliceblue;
+    box-shadow: 5px 5px 10px 0px gray;
+  `;
+
+  modalDiv.innerHTML = ModalHeader('Metrics');
+
+  for (let { title, metrics } of titledMetrics) {
+    modalDiv.appendChild(MetricsTable(title, metrics));
+  }
+  return modalDiv;
+}
+
+function ModalHeader(title) {
+  return `<h3>${title}</h3>`;
+}
+
+function MetricsTable(title, metrics) {
   let tableDiv = document.createElement('div');
   tableDiv.style = `
-    background: white;
-    padding: 16px;
-    border: 8px solid aliceblue;
-    box-shadow: 5px 5px 10px 0px gray;
+    margin-top: 24px;
   `;
 
   tableDiv.innerHTML = `
@@ -141,45 +182,50 @@ function renderMetrics(metrics, categorizedBy) {
       table, th, td {
         border: 1px solid lightgray;
         padding: 4px;
+        text-align: start;
+        width: 100%
       }
       table {
         border-collapse: collapse;
       }
     </style>
-    ${Header()}
+    ${Header(title)}
     <table>
       <thead>
-        ${TableHeaderRow(columns)}
+        ${TableHeaderRow([...TAGS, ...TIMINGS])}
       </thead>
       <tbody>
         ${Object.entries(metrics).map(renderCategory).join('')}
       </tbody>
     </table>
   `;
-
-  modal.appendChild(tableDiv);
-  document.querySelector('body').appendChild(modal);
+  return tableDiv;
 }
 
 function formatDate(date) {
   return `${date.getUTCMonth() + 1}/${date.getUTCDate()}/${date.getUTCFullYear()}`;
 }
 
-function Header() {
+function Header(title) {
   let startDate = new Date(start);
   let endDate = new Date();
   return `
-    <h4 style="margin-bottom: 16px">
-      Metrics by Author (${formatDate(startDate)} - ${formatDate(endDate)})
+    <h4 style="margin-bottom: 8px">
+      ${title} (${formatDate(startDate)} - ${formatDate(endDate)})
     </h4>
   `;
 }
 
 function TableHeaderRow(columns) {
-  return `<tr>${columns.map(ColumnHeader).join('')}</tr>`;
+  return `
+    <tr>
+      <th></th>
+      ${columns.map(HeaderCell).join('')}
+    </tr>
+  `;
 }
 
-function ColumnHeader(headerName) {
+function HeaderCell(headerName) {
   return `<th>${headerName}</th>`;
 }
 
@@ -192,7 +238,7 @@ function renderCategory([category, metrics]) {
   let timings = metrics.timings.all ?? metrics.timings;
   return `
     <tr>
-      ${TableCell(category)}
+      ${HeaderCell(category)}
       ${renderCounts(counts)}
       ${renderTimings(timings)}
     </tr>
@@ -208,16 +254,6 @@ function renderTimings(timings) {
     ${TableCell(humanizeDuration(timings.avgTimeToMerge))}
     ${TableCell(humanizeDuration(timings.avgTimeToReview))}
   `;
-}
-
-function aggregateMetrics(metrics) {
-  let total = { counts: new CountMetrics(), timings: new TimingMetrics() }
-  for (let category of Object.keys(metrics)) {
-    let { counts, timings } = metrics[category];
-    total.counts.addCounts(counts.all);
-    total.timings.addTimings(timings.all);
-  }
-  return total;
 }
 
 class CountMetrics {
@@ -279,66 +315,6 @@ class TimingMetrics {
   }
 }
 
-async function runMetrics() {
-  console.log('running metrics');
-
-  let data = {};
-  for (let repo of REPOS) {
-    data[repo] = await fetchPRs(repo);
-  }
-
-  let metrics = {};
-
-  // calculate individual metrics
-  for (let username of teamMembers) {
-    metrics[username] = { allRepos: {} };
-
-    let categorized = {};
-    for (let repo of REPOS) {
-      categorized[repo] = categorizeIssues(data[repo][username]);
-      console.log(`categorized - ${repo} - ${username}`, categorized[repo]);
-
-      metrics[username][repo] = {};
-      for (let key of TAGS) {
-        let count = categorized[repo][key].length;
-        metrics[username][repo][key] = count;
-      }
-
-      let totalTimeToMerge = 0;
-      let totalTimeToReview = 0;
-      let merged = categorized[repo][MERGED];
-      for (let issue of merged) {
-        let { time_to_merge, time_to_review } = issue.pull_request;
-        totalTimeToMerge += time_to_merge;
-        totalTimeToReview += time_to_review;
-      }
-      metrics[username][repo][TIME_TO_MERGE] = humanizeDuration(totalTimeToMerge / merged.length);
-      metrics[username][repo][TIME_TO_REVIEW] = humanizeDuration(totalTimeToReview / merged.length);
-    }
-  }
-
-  // calculate aggregate metrics
-  let total = { allRepos: {} }
-  for (let repo of REPOS) {
-    total[repo] = {};
-    for (let username of teamMembers) {
-      for (let key of TAGS) {
-        let count = metrics[username][repo][key];
-        total[repo][key] = (total[repo][key] ?? 0) + count;
-        total.allRepos[key] = (total.allRepos[key] ?? 0) + count;
-        metrics[username].allRepos[key] = (metrics[username].allRepos[key] ?? 0) + count;
-      }
-    }
-    // metrics.total[repo][TIME_TO_MERGE] = humanizeDuration(total[repo][TIME_TO_MERGE] / metrics.total[repo][MERGED]);
-    // metrics.total[repo][TIME_TO_REVIEW] = humanizeDuration(total[repo][TIME_TO_REVIEW] / metrics.total[repo][MERGED]);
-  }
-
-  metrics.total = total;
-
-  console.log(JSON.stringify(metrics, null, 2));
-  console.log(metrics);
-}
-
 function humanizeDuration(millis) {
   if (isNaN(millis)) {
     return null;
@@ -392,16 +368,6 @@ const TIMINGS = [TIME_TO_MERGE, TIME_TO_REVIEW];
 const REOPENED = 'reopened';
 const READY_FOR_REVIEW = 'ready_for_review';
 const REVIEW_REQUESTED = 'review_requested';
-
-function categorizeIssues(issues) {
-  let categories = { [DRAFT]: [], [OLD]: [], [NEW]: [], [MERGED]: [], [OUTSTANDING]: []  };
-  for (let issue of issues) {
-    for (let tag of issue.tags) {
-      categories[tag].push(issue);
-    }
-  }
-  return categories;
-}
 
 const username = 'andrewezzet-addepar';
 const token = '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';
@@ -492,6 +458,130 @@ async function fetchPRs2(repo) {
   return Object.values(issuesById);
 }
 
+/**
+ * thanks to @bantic for the logic here!
+ */
+function getOpenedForReviewDate(issue, lastReopened) {
+  let { events, pull_request } = issue;
+  let { merged_at } = pull_request;
+
+  let lastReadyForReview = events.reverse().find(({ event }) => event === READY_FOR_REVIEW);
+
+  // if review was requested after merging, ignore
+  let firstReviewRequested = events.find(({ event, created_at }) => event === REVIEW_REQUESTED && (!merged_at || merged_at > created_at));
+
+  let openedForReview = lastReadyForReview || firstReviewRequested || lastReopened || pull_request
+  return openedForReview.created_at;
+}
+
+function getFirstReviewedDate(issue) {
+  let { reviews } = issue;
+  return reviews[0]?.submitted_at;
+}
+
+function getTags(issue) {
+  let { pull_request } = issue;
+  let { opened_at, merged_at, draft } = pull_request;
+
+  if (draft) {
+    return [DRAFT];
+  }
+
+  let tags = [];
+  if (opened_at < start) {
+    tags.push(OLD);
+  } else {
+    tags.push(NEW);
+  }
+
+  if (merged_at) {
+    tags.push(MERGED);
+  } else {
+    tags.push(OUTSTANDING);
+  }
+  return tags;
+}
+
+function getTimeToMerge(issue) {
+  let { opened_at, merged_at } = issue.pull_request;
+  return new Date(merged_at) - new Date(opened_at);
+}
+
+function getTimeToReview(issue) {
+  let { opened_at, first_reviewed_at } = issue.pull_request;
+  return new Date(first_reviewed_at) - new Date(opened_at);
+}
+
+async function runMetrics() {
+  console.log('running metrics');
+
+  function categorizeIssues(issues) {
+    let categories = { [DRAFT]: [], [OLD]: [], [NEW]: [], [MERGED]: [], [OUTSTANDING]: []  };
+    for (let issue of issues) {
+      for (let tag of issue.tags) {
+        categories[tag].push(issue);
+      }
+    }
+    return categories;
+  }
+
+  let data = {};
+  for (let repo of REPOS) {
+    data[repo] = await fetchPRs(repo);
+  }
+
+  let metrics = {};
+
+  // calculate individual metrics
+  for (let username of teamMembers) {
+    metrics[username] = { allRepos: {} };
+
+    let categorized = {};
+    for (let repo of REPOS) {
+      categorized[repo] = categorizeIssues(data[repo][username]);
+      console.log(`categorized - ${repo} - ${username}`, categorized[repo]);
+
+      metrics[username][repo] = {};
+      for (let key of TAGS) {
+        let count = categorized[repo][key].length;
+        metrics[username][repo][key] = count;
+      }
+
+      let totalTimeToMerge = 0;
+      let totalTimeToReview = 0;
+      let merged = categorized[repo][MERGED];
+      for (let issue of merged) {
+        let { time_to_merge, time_to_review } = issue.pull_request;
+        totalTimeToMerge += time_to_merge;
+        totalTimeToReview += time_to_review;
+      }
+      metrics[username][repo][TIME_TO_MERGE] = humanizeDuration(totalTimeToMerge / merged.length);
+      metrics[username][repo][TIME_TO_REVIEW] = humanizeDuration(totalTimeToReview / merged.length);
+    }
+  }
+
+  // calculate aggregate metrics
+  let total = { allRepos: {} }
+  for (let repo of REPOS) {
+    total[repo] = {};
+    for (let username of teamMembers) {
+      for (let key of TAGS) {
+        let count = metrics[username][repo][key];
+        total[repo][key] = (total[repo][key] ?? 0) + count;
+        total.allRepos[key] = (total.allRepos[key] ?? 0) + count;
+        metrics[username].allRepos[key] = (metrics[username].allRepos[key] ?? 0) + count;
+      }
+    }
+    // metrics.total[repo][TIME_TO_MERGE] = humanizeDuration(total[repo][TIME_TO_MERGE] / metrics.total[repo][MERGED]);
+    // metrics.total[repo][TIME_TO_REVIEW] = humanizeDuration(total[repo][TIME_TO_REVIEW] / metrics.total[repo][MERGED]);
+  }
+
+  metrics.total = total;
+
+  console.log(JSON.stringify(metrics, null, 2));
+  console.log(metrics);
+}
+
 async function fetchPRs(repo) {
   console.log('fetching data');
 
@@ -557,58 +647,4 @@ async function fetchPRs(repo) {
   }
 
   return issuesByAuthor;
-}
-
-/**
- * thanks to @bantic for the logic here!
- */
-function getOpenedForReviewDate(issue, lastReopened) {
-  let { events, pull_request } = issue;
-  let { merged_at } = pull_request;
-
-  let lastReadyForReview = events.reverse().find(({ event }) => event === READY_FOR_REVIEW);
-
-  // if review was requested after merging, ignore
-  let firstReviewRequested = events.find(({ event, created_at }) => event === REVIEW_REQUESTED && (!merged_at || merged_at > created_at));
-
-  let openedForReview = lastReadyForReview || firstReviewRequested || lastReopened || pull_request
-  return openedForReview.created_at;
-}
-
-function getFirstReviewedDate(issue) {
-  let { reviews } = issue;
-  return reviews[0]?.submitted_at;
-}
-
-function getTags(issue) {
-  let { pull_request } = issue;
-  let { opened_at, merged_at, draft } = pull_request;
-
-  if (draft) {
-    return [DRAFT];
-  }
-
-  let tags = [];
-  if (opened_at < start) {
-    tags.push(OLD);
-  } else {
-    tags.push(NEW);
-  }
-
-  if (merged_at) {
-    tags.push(MERGED);
-  } else {
-    tags.push(OUTSTANDING);
-  }
-  return tags;
-}
-
-function getTimeToMerge(issue) {
-  let { opened_at, merged_at } = issue.pull_request;
-  return new Date(merged_at) - new Date(opened_at);
-}
-
-function getTimeToReview(issue) {
-  let { opened_at, first_reviewed_at } = issue.pull_request;
-  return new Date(first_reviewed_at) - new Date(opened_at);
 }
