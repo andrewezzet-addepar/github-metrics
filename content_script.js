@@ -114,14 +114,14 @@ class Config {
 
 let config = new Config();
 
-async function runMetrics2() {
+async function runMetrics() {
   console.log('running metrics');
 
   let { repos, usernames } = config;
 
   let data = [];
   for (let repo of repos) {
-    data = data.concat(await fetchPRs2(repo, usernames));
+    data = data.concat(await fetchPRs(repo, usernames));
   }
 
   let metrics = new Metrics(data);
@@ -191,7 +191,7 @@ function addParamsForm(parent) {
   button.onclick = async function() {
     button.disabled = true;
     button.innerText = 'Loading...';
-    await runMetrics2();
+    await runMetrics();
     button.disabled = false;
     button.innerText = 'Run';
   }
@@ -480,7 +480,7 @@ class HttpClient {
 
 let http;
 
-async function fetchPRs2(repo, usernames) {
+async function fetchPRs(repo, usernames) {
   console.log('fetching data');
 
   if (!http) {
@@ -598,144 +598,4 @@ function getTimeToMerge(issue) {
 function getTimeToReview(issue) {
   let { opened_at, first_reviewed_at } = issue.pull_request;
   return new Date(first_reviewed_at) - new Date(opened_at);
-}
-
-async function runMetrics() {
-  console.log('running metrics');
-
-  function categorizeIssues(issues) {
-    let categories = { [DRAFT]: [], [OLD]: [], [NEW]: [], [MERGED]: [], [OUTSTANDING]: []  };
-    for (let issue of issues) {
-      for (let tag of issue.tags) {
-        categories[tag].push(issue);
-      }
-    }
-    return categories;
-  }
-
-  let { repos, usernames } = config;
-
-  let data = {};
-  for (let repo of repos) {
-    data[repo] = await fetchPRs(repo, usernames);
-  }
-
-  let metrics = {};
-
-  // calculate individual metrics
-  for (let username of usernames) {
-    metrics[username] = { allRepos: {} };
-
-    let categorized = {};
-    for (let repo of repos) {
-      categorized[repo] = categorizeIssues(data[repo][username]);
-      console.log(`categorized - ${repo} - ${username}`, categorized[repo]);
-
-      metrics[username][repo] = {};
-      for (let key of TAGS) {
-        let count = categorized[repo][key].length;
-        metrics[username][repo][key] = count;
-      }
-
-      let totalTimeToMerge = 0;
-      let totalTimeToReview = 0;
-      let merged = categorized[repo][MERGED];
-      for (let issue of merged) {
-        let { time_to_merge, time_to_review } = issue.pull_request;
-        totalTimeToMerge += time_to_merge;
-        totalTimeToReview += time_to_review;
-      }
-      metrics[username][repo][TIME_TO_MERGE] = humanizeDuration(totalTimeToMerge / merged.length);
-      metrics[username][repo][TIME_TO_REVIEW] = humanizeDuration(totalTimeToReview / merged.length);
-    }
-  }
-
-  // calculate aggregate metrics
-  let total = { allRepos: {} }
-  for (let repo of repos) {
-    total[repo] = {};
-    for (let username of usernames) {
-      for (let key of TAGS) {
-        let count = metrics[username][repo][key];
-        total[repo][key] = (total[repo][key] ?? 0) + count;
-        total.allRepos[key] = (total.allRepos[key] ?? 0) + count;
-        metrics[username].allRepos[key] = (metrics[username].allRepos[key] ?? 0) + count;
-      }
-    }
-    // metrics.total[repo][TIME_TO_MERGE] = humanizeDuration(total[repo][TIME_TO_MERGE] / metrics.total[repo][MERGED]);
-    // metrics.total[repo][TIME_TO_REVIEW] = humanizeDuration(total[repo][TIME_TO_REVIEW] / metrics.total[repo][MERGED]);
-  }
-
-  metrics.total = total;
-
-  console.log(JSON.stringify(metrics, null, 2));
-  console.log(metrics);
-}
-
-async function fetchPRs(repo, usernames) {
-  console.log('fetching data');
-
-  if (!http) {
-    let { username, token } = config;
-    http = new HttpClient(username, token);
-  }
-
-  const issuesUrl = `https://api.github.com/repos/addepar/${repo}/issues`;
-
-  let openIssuesPromises = {};
-  let mergedIssuesPromises = {};
-  for (let username of usernames) {
-    openIssuesPromises[username] = http.GET(`${issuesUrl}?creator=${username}&pulls=true&state=open`);
-    mergedIssuesPromises[username] = http.GET(`${issuesUrl}?creator=${username}&pulls=true&state=closed&since=${config.start}`);
-  }
-
-  let issuesById = {};
-  let pullPromises = {};
-  let eventPromises = {};
-  let reviewPromises = {};
-  let issuesByAuthor = {};
-
-  // fetch issues for each user
-  for (let username of usernames) {
-    let openIssues = await openIssuesPromises[username];
-    let mergedIssues = await mergedIssuesPromises[username];
-    let allIssues = openIssues.concat(mergedIssues);
-    issuesByAuthor[username] = allIssues;
-
-    // fetch pr, events, and reviews for each issue
-    for (let issue of allIssues) {
-      let id = issue.number;
-      issuesById[id] = issue;
-      pullPromises[id] = http.GET(issue.pull_request.url);
-      eventPromises[id] = http.GET(`${issuesUrl}/${id}/events`);
-      reviewPromises[id] = http.GET(`${issue.pull_request.url}/reviews`);
-    }
-  }
-
-  // enrich data
-  for (let [id, issue] of Object.entries(issuesById)) {
-    issue.repo = repo;
-    issue.author = issue.user.login;
-    issue.events = await eventPromises[id];
-    issue.reviews = await reviewPromises[id];
-    issue.pull_request = await pullPromises[id];
-
-    // if it was ever closed, ignore events and reviews before it was last reopened
-    let lastReopened = issue.events.reverse().find(({ event }) => event === REOPENED);
-    if (lastReopened) {
-      issue.events = issue.events.slice(events.indexOf(lastReopened));
-      issue.reviews = issues.reviews.filter(({ submitted_at }) => submitted_at > lastReopened.created_at);
-    }
-
-    issue.pull_request.opened_at = getOpenedForReviewDate(issue, lastReopened);
-    issue.pull_request.first_reviewed_at = getFirstReviewedDate(issue);
-    issue.tags = getTags(issue);
-
-    if (issue.tags.includes(MERGED)) {
-      issue.pull_request.time_to_merge = getTimeToMerge(issue);
-      issue.pull_request.time_to_review = getTimeToReview(issue);
-    }
-  }
-
-  return issuesByAuthor;
 }
