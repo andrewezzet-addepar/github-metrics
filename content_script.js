@@ -79,36 +79,66 @@ class Metrics {
   }
 }
 
+function parseCommaSeparated(value) {
+  if (!value.trim().length) {
+    return [];
+  }
+  return value.split(',').map(val => val.trim()).filter(val => val.length);
+}
+
 class Config {
   getform(dataAttr) {
     return document.querySelector(`[${dataAttr}]`);
   }
 
+  getValue(formAttr, field) {
+    return this.getform(formAttr).elements[field].value;
+  }
+
   get username() {
-    return 'andrewezzet-addepar';
+    return this.defaults.username;
   }
 
   get token() {
-    return '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';
+    return this.defaults.token;
   }
 
   get start() {
-    return '2021-05-24T00:00:00.000Z';
+    return this.getValue(PARAMS_FORM_ATTR, 'start');
+  }
+
+  get end() {
+    return this.getValue(PARAMS_FORM_ATTR, 'end');
   }
 
   get repos() {
-    return ['AMP', 'Iverson'];
+    let value = this.getValue(PARAMS_FORM_ATTR, 'repos');
+    return parseCommaSeparated(value);
   }
 
   get usernames() {
-    return [
-      'twesely',
-      'aberman-addepar',
-      'addemike',
-      'andrewezzet-addepar',
-      'c69-addepar',
-      'john-addepar'
-    ];
+    let value = this.getValue(PARAMS_FORM_ATTR, 'usernames');
+    return parseCommaSeparated(value);
+  }
+  
+  today = new Date().toISOString();
+
+  get defaults() {
+    return {
+      username: 'andrewezzet-addepar',
+      token: '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',
+      start: '2021-05-24T00:00:00.000Z',
+      end: this.today,
+      repos: ['AMP', 'Iverson'],
+      usernames: [
+        'twesely',
+        'aberman-addepar',
+        'addemike',
+        'andrewezzet-addepar',
+        'c69-addepar',
+        'john-addepar'
+      ],
+    }
   }
 }
 
@@ -119,10 +149,17 @@ async function runMetrics() {
 
   let { repos, usernames } = config;
 
+  if (!repos.length || !usernames.length) {
+    renderMetrics();
+    return;
+  }
+
   let data = [];
   for (let repo of repos) {
     data = data.concat(await fetchPRs(repo, usernames));
   }
+
+  console.log(data);
 
   let metrics = new Metrics(data);
 
@@ -139,8 +176,6 @@ async function runMetrics() {
   resultsByAuthor.all = aggregateMetrics(resultsByAuthor);
 
   console.log(resultsByRepo, resultsByAuthor);
-  console.log(JSON.stringify(resultsByRepo, null, 2));
-  console.log(JSON.stringify(resultsByAuthor, null, 2));
   renderMetrics(
     { title: 'Results by Repo', metrics: resultsByRepo }, 
     { title: 'Results by Author', metrics: resultsByAuthor },
@@ -178,15 +213,32 @@ function addAuthForm(parent) {
 function addParamsForm(parent) {
   let formContainer = document.createElement('div');
   formContainer.innerHTML = `
+    <style>
+      .form-group {
+        margin-bottom: 16px;
+      }
+      input {
+        margin-right: 8px;
+      }
+    </style>
     <form style="margin-top: 8px" ${PARAMS_FORM_ATTR}>
-      <label for="usernames">Usernames</label>
-      <input id="usernames" name="usernames">
-      <label for="repos" style="margin-left: 8px;">Repositories</label>
-      <input id="repos" name="repos">
+      <div class="form-group">
+        <label for="start">Start</label>
+        <input type="date" id="start" name="start">
+        <label for="end">End</label>
+        <input type="date" id="end" name="end">
+      </div>
+      <div class="form-group">
+        <label for="repos">Repos</label>
+        <input id="repos" name="repos">
+        <label for="usernames">Usernames</label>
+        <input id="usernames" name="usernames">
+      </div>
     </form>
   `;
   let button = document.createElement('button');
   button.style = 'margin-left: 8px;';
+  button.type = 'button';
   button.innerText = 'Run';
   button.onclick = async function() {
     button.disabled = true;
@@ -196,8 +248,19 @@ function addParamsForm(parent) {
     button.innerText = 'Run';
   }
   let form = formContainer.querySelector('form');
-  form.appendChild(button);
+  form.elements['start'].value = toDateInputFormat(new Date(config.defaults.start));
+  form.elements['end'].value = toDateInputFormat(new Date(config.defaults.end));
+  form.elements['repos'].value = config.defaults.repos;
+  form.elements['usernames'].value = config.defaults.usernames;
+  form.lastElementChild.appendChild(button);
   parent.appendChild(formContainer);
+}
+
+function toDateInputFormat(date) {
+  let m = date.getMonth() + 1;
+  let d = date.getDate();
+  let y = date.getFullYear();
+  return `${y}-${(m < 10 ? '0' : '') + m}-${(d < 10 ? '0' : '') + d}`;
 }
 
 function ModalContainer() {
@@ -206,8 +269,6 @@ function ModalContainer() {
     container = document.createElement('div');
     container.setAttribute(CONTAINER_ATTR, true);
     container.style = `
-      position: absolute; 
-    position: absolute; 
       position: absolute; 
       top: 0;
       display: flex;
@@ -302,10 +363,10 @@ function formatDate(date) {
 
 function Header(title) {
   let startDate = new Date(config.start);
-  let endDate = new Date();
+  let endDate = new Date(config.end);
   return `
     <h4 style="margin-bottom: 8px">
-      ${title} (${formatDate(startDate)} - ${formatDate(endDate)})
+      ${title} (${formatDate(startDate)} to ${formatDate(endDate)})
     </h4>
   `;
 }
@@ -481,7 +542,7 @@ class HttpClient {
 let http;
 
 async function fetchPRs(repo, usernames) {
-  console.log('fetching data');
+  console.log(`fetching data - repo: ${repo} - usernames: ${usernames}`);
 
   if (!http) {
     let { username, token } = config;
@@ -506,6 +567,10 @@ async function fetchPRs(repo, usernames) {
   for (let username of usernames) {
     let openIssues = await openIssuesPromises[username];
     let mergedIssues = await mergedIssuesPromises[username];
+
+    // these API's don't currently support adding an end date
+    mergedIssues = mergedIssues.filter(({ closed_at }) => closed_at < config.end);
+
     let allIssues = openIssues.concat(mergedIssues);
 
     // fetch pr, events, and reviews for each issue
