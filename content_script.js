@@ -1,16 +1,9 @@
 console.log('[github-metrics] chrome extension loaded');
-const LINK_ATTR = 'data-chrome-extension-linked';
-const TESTS_SELECTOR = `#qunit-tests > li > strong:not([${LINK_ATTR}])`;
-const PASSED_TESTS_SELECTOR = `#qunit-tests > li.pass > strong[${LINK_ATTR}]`;
-
-const teamMembers = [
-  'twesely',
-  'aberman-addepar',
-  'addemike',
-  'andrewezzet-addepar',
-  'c69-addepar',
-  'john-addepar'
-];
+const CONTAINER_ATTR = 'data-metrics-container';
+const MODAL_ATTR = 'data-metrics-modal';
+const AUTH_FORM_ATTR = 'data-metrics-auth-form';
+const PARAMS_FORM_ATTR = 'data-metrics-params-form';
+const TABLE_ATTR = 'data-metrics-table';
 
 function addMetricsButton() {
   let anchor = document.querySelector('notification-indicator').parentElement;
@@ -19,17 +12,11 @@ function addMetricsButton() {
   button.innerText = 'Metrics';
   anchor.insertAdjacentElement('beforebegin', button);
   button.onclick = async function() {
-    button.innerText = 'Loading...';
-    await runMetrics2();
-    button.innerText = 'Metrics';
+    openMetricsModal();
   }
 }
 
 addMetricsButton();
-
-let AMP = 'AMP';
-let IVERSON = 'Iverson';
-let REPOS = [AMP, IVERSON];
 
 class Metrics {
   constructor(issues) {
@@ -92,24 +79,61 @@ class Metrics {
   }
 }
 
+class Config {
+  getform(dataAttr) {
+    return document.querySelector(`[${dataAttr}]`);
+  }
+
+  get username() {
+    return 'andrewezzet-addepar';
+  }
+
+  get token() {
+    return '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';
+  }
+
+  get start() {
+    return '2021-05-24T00:00:00.000Z';
+  }
+
+  get repos() {
+    return ['AMP', 'Iverson'];
+  }
+
+  get usernames() {
+    return [
+      'twesely',
+      'aberman-addepar',
+      'addemike',
+      'andrewezzet-addepar',
+      'c69-addepar',
+      'john-addepar'
+    ];
+  }
+}
+
+let config = new Config();
+
 async function runMetrics2() {
   console.log('running metrics');
 
+  let { repos, usernames } = config;
+
   let data = [];
-  for (let repo of REPOS) {
-    data = data.concat(await fetchPRs2(repo));
+  for (let repo of repos) {
+    data = data.concat(await fetchPRs2(repo, usernames));
   }
 
   let metrics = new Metrics(data);
 
   let resultsByRepo = {};
-  for (let repo of REPOS) {
+  for (let repo of repos) {
     resultsByRepo[repo] = metrics.getRepoMetrics(repo, { categorizeBy: 'author' });
   }
   resultsByRepo.all = aggregateMetrics(resultsByRepo);
 
   let resultsByAuthor = {};
-  for (let username of teamMembers) {
+  for (let username of usernames) {
     resultsByAuthor[username] = metrics.getUserMetrics(username, { categorizeBy: 'repo' });
   }
   resultsByAuthor.all = aggregateMetrics(resultsByAuthor);
@@ -133,38 +157,107 @@ function aggregateMetrics(metrics) {
   return total;
 }
 
-function renderMetrics(...titledMetrics) {
-  let modal = document.createElement('div');
-  modal.style = `
-    position: absolute; 
-    top: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-    background: #00000033;
-  `;
-
-  modal.appendChild(MetricsModal(titledMetrics));
-  document.querySelector('body').appendChild(modal);
+function openMetricsModal() {
+  let modal = renderModal();
+  addParamsForm(modal);
 }
 
-function MetricsModal(titledMetrics) {
-  let modalDiv = document.createElement('div');
-  modalDiv.style = `
-    background: white;
-    padding: 8px 16px 16px;
-    border: 4px solid aliceblue;
-    box-shadow: 5px 5px 10px 0px gray;
+function addAuthForm(parent) {
+  let formContainer = document.createElement('div');
+  formContainer.innerHTML = `
+    <form style="margin-top: 8px" ${AUTH_FORM_ATTR}>
+      <label for="username">Username</label>
+      <input id="user" name="user">
+      <label for="token" style="margin-left: 16px;">Token</label>
+      <input id="token" name="token">
+    </form>
   `;
+  parent.appendChild(formContainer);
+}
 
-  modalDiv.innerHTML = ModalHeader('Metrics');
+function addParamsForm(parent) {
+  let formContainer = document.createElement('div');
+  formContainer.innerHTML = `
+    <form style="margin-top: 8px" ${PARAMS_FORM_ATTR}>
+      <label for="usernames">Usernames</label>
+      <input id="usernames" name="usernames">
+      <label for="repos" style="margin-left: 8px;">Repositories</label>
+      <input id="repos" name="repos">
+    </form>
+  `;
+  let button = document.createElement('button');
+  button.style = 'margin-left: 8px;';
+  button.innerText = 'Run';
+  button.onclick = async function() {
+    button.disabled = true;
+    button.innerText = 'Loading...';
+    await runMetrics2();
+    button.disabled = false;
+    button.innerText = 'Run';
+  }
+  let form = formContainer.querySelector('form');
+  form.appendChild(button);
+  parent.appendChild(formContainer);
+}
+
+function ModalContainer() {
+  let container = document.querySelector(`[${CONTAINER_ATTR}]`)
+  if (!container) {
+    container = document.createElement('div');
+    container.setAttribute(CONTAINER_ATTR, true);
+    container.style = `
+      position: absolute; 
+    position: absolute; 
+      position: absolute; 
+      top: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      background: #00000033;
+    `;
+    document.querySelector('body').appendChild(container);
+  }
+  return container;
+}
+
+function renderMetrics(...titledMetrics) {
+  let modal = renderModal();
+
+  let prevTables = document.querySelectorAll(`[${TABLE_ATTR}]`);
+  for (let table of prevTables) {
+    modal.removeChild(table);
+  }
 
   for (let { title, metrics } of titledMetrics) {
-    modalDiv.appendChild(MetricsTable(title, metrics));
+    modal.appendChild(MetricsTable(title, metrics));
   }
-  return modalDiv;
+}
+
+function renderModal() {
+  let container = ModalContainer();
+  let modal = Modal(container);
+  return modal;
+}
+
+function Modal(container, title = 'Metrics') {
+  let modal = document.querySelector(`[${MODAL_ATTR}]`);
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.setAttribute(MODAL_ATTR, true);
+    modal.style = `
+      background: white;
+      padding: 8px 16px 16px;
+      border: 4px solid aliceblue;
+      box-shadow: 5px 5px 10px 0px gray;
+    `;
+  
+    modal.innerHTML = ModalHeader(title);
+    container.appendChild(modal);
+  }
+
+  return modal;
 }
 
 function ModalHeader(title) {
@@ -173,6 +266,7 @@ function ModalHeader(title) {
 
 function MetricsTable(title, metrics) {
   let tableDiv = document.createElement('div');
+  tableDiv.setAttribute(TABLE_ATTR, true);
   tableDiv.style = `
     margin-top: 24px;
   `;
@@ -207,7 +301,7 @@ function formatDate(date) {
 }
 
 function Header(title) {
-  let startDate = new Date(start);
+  let startDate = new Date(config.start);
   let endDate = new Date();
   return `
     <h4 style="margin-bottom: 8px">
@@ -369,11 +463,6 @@ const REOPENED = 'reopened';
 const READY_FOR_REVIEW = 'ready_for_review';
 const REVIEW_REQUESTED = 'review_requested';
 
-const username = 'andrewezzet-addepar';
-const token = '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';
-const start = "2021-05-24T00:00:00.000Z";
-const today = new Date().toISOString();
-
 class HttpClient {
   constructor(username, token) {
     this.options = { 
@@ -384,8 +473,6 @@ class HttpClient {
     };
   }
 
-  options;
-
   async GET(url) {
     return fetch(url, this.options).then(res => res.json())
   }
@@ -393,10 +480,11 @@ class HttpClient {
 
 let http;
 
-async function fetchPRs2(repo) {
+async function fetchPRs2(repo, usernames) {
   console.log('fetching data');
 
   if (!http) {
+    let { username, token } = config;
     http = new HttpClient(username, token);
   }
 
@@ -404,9 +492,9 @@ async function fetchPRs2(repo) {
 
   let openIssuesPromises = {};
   let mergedIssuesPromises = {};
-  for (let username of teamMembers) {
+  for (let username of usernames) {
     openIssuesPromises[username] = http.GET(`${issuesUrl}?creator=${username}&pulls=true&state=open`);
-    mergedIssuesPromises[username] = http.GET(`${issuesUrl}?creator=${username}&pulls=true&state=closed&since=${start}`);
+    mergedIssuesPromises[username] = http.GET(`${issuesUrl}?creator=${username}&pulls=true&state=closed&since=${config.start}`);
   }
 
   let issuesById = {};
@@ -415,7 +503,7 @@ async function fetchPRs2(repo) {
   let reviewPromises = {};
 
   // fetch issues for each user
-  for (let username of teamMembers) {
+  for (let username of usernames) {
     let openIssues = await openIssuesPromises[username];
     let mergedIssues = await mergedIssuesPromises[username];
     let allIssues = openIssues.concat(mergedIssues);
@@ -488,7 +576,7 @@ function getTags(issue) {
   }
 
   let tags = [];
-  if (opened_at < start) {
+  if (opened_at < config.start) {
     tags.push(OLD);
   } else {
     tags.push(NEW);
@@ -525,19 +613,21 @@ async function runMetrics() {
     return categories;
   }
 
+  let { repos, usernames } = config;
+
   let data = {};
-  for (let repo of REPOS) {
-    data[repo] = await fetchPRs(repo);
+  for (let repo of repos) {
+    data[repo] = await fetchPRs(repo, usernames);
   }
 
   let metrics = {};
 
   // calculate individual metrics
-  for (let username of teamMembers) {
+  for (let username of usernames) {
     metrics[username] = { allRepos: {} };
 
     let categorized = {};
-    for (let repo of REPOS) {
+    for (let repo of repos) {
       categorized[repo] = categorizeIssues(data[repo][username]);
       console.log(`categorized - ${repo} - ${username}`, categorized[repo]);
 
@@ -562,9 +652,9 @@ async function runMetrics() {
 
   // calculate aggregate metrics
   let total = { allRepos: {} }
-  for (let repo of REPOS) {
+  for (let repo of repos) {
     total[repo] = {};
-    for (let username of teamMembers) {
+    for (let username of usernames) {
       for (let key of TAGS) {
         let count = metrics[username][repo][key];
         total[repo][key] = (total[repo][key] ?? 0) + count;
@@ -582,10 +672,11 @@ async function runMetrics() {
   console.log(metrics);
 }
 
-async function fetchPRs(repo) {
+async function fetchPRs(repo, usernames) {
   console.log('fetching data');
 
   if (!http) {
+    let { username, token } = config;
     http = new HttpClient(username, token);
   }
 
@@ -593,9 +684,9 @@ async function fetchPRs(repo) {
 
   let openIssuesPromises = {};
   let mergedIssuesPromises = {};
-  for (let username of teamMembers) {
+  for (let username of usernames) {
     openIssuesPromises[username] = http.GET(`${issuesUrl}?creator=${username}&pulls=true&state=open`);
-    mergedIssuesPromises[username] = http.GET(`${issuesUrl}?creator=${username}&pulls=true&state=closed&since=${start}`);
+    mergedIssuesPromises[username] = http.GET(`${issuesUrl}?creator=${username}&pulls=true&state=closed&since=${config.start}`);
   }
 
   let issuesById = {};
@@ -605,7 +696,7 @@ async function fetchPRs(repo) {
   let issuesByAuthor = {};
 
   // fetch issues for each user
-  for (let username of teamMembers) {
+  for (let username of usernames) {
     let openIssues = await openIssuesPromises[username];
     let mergedIssues = await mergedIssuesPromises[username];
     let allIssues = openIssues.concat(mergedIssues);
