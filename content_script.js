@@ -232,7 +232,7 @@ function addParamsForm(parent) {
         <label for="repos">Repos</label>
         <input id="repos" name="repos">
         <label for="usernames">Usernames</label>
-        <input id="usernames" name="usernames">
+        <input style="width: 500px;" id="usernames" name="usernames">
       </div>
     </form>
   `;
@@ -405,10 +405,22 @@ function renderCounts(counts) {
 }
 
 function renderTimings(timings) {
+  let { entries, summary } = timings;
+  let { additions, deletions } = summary;
+  let avgAdd = additions / entries.length;
+  let avgDel = deletions / entries.length;
   return `
-    ${TableCell(humanizeDuration(timings.avgTimeToMerge))}
-    ${TableCell(humanizeDuration(timings.avgTimeToReview))}
+    ${TableCell(humanizeDuration(timings.avgTimeToMerge) ?? 'N/A')}
+    ${TableCell(humanizeDuration(timings.avgTimeToReview) ?? 'N/A')}
+    ${TableCell(diffSummary(avgAdd, avgDel) ??  'N/A')}
   `;
+}
+
+function diffSummary(add, del) {
+  if (isNaN(add) || isNaN(del)) {
+    return null;
+  }
+  return `${toFixed(0, add + del)}&nbsp;(+${toFixed(0, add)}/-${toFixed(0, del)})`;
 }
 
 class CountMetrics {
@@ -437,36 +449,72 @@ class CountMetrics {
 
 class TimingMetrics {
   constructor() {
-    this.time_to_merge = [];
-    this.time_to_review = [];
+    this.entries = [];
   }
 
   addTimings(timings) {
-    this.time_to_merge = this.time_to_merge.concat(timings.time_to_merge);
-    this.time_to_review = this.time_to_review.concat(timings.time_to_review);
+    this.entries = this.entries.concat(timings.entries);
   }
 
   addIssue(issue) {
     if (issue.tags.includes(MERGED)) {
-      this.time_to_merge.push(issue.pull_request.time_to_merge);
-      this.time_to_review.push(issue.pull_request.time_to_review);
+      let { additions, deletions, time_to_merge, time_to_review } = issue.pull_request;
+      this.entries.push({
+        additions,
+        deletions,
+        time_to_merge,
+        time_to_review,
+      });
     }
   }
 
   get totalTimeToMerge() {
-    return this.time_to_merge.reduce((acc, time) => acc + time, 0);
+    return this.entries.reduce((acc, entry) => acc + entry.time_to_merge, 0);
   }
 
   get totalTimeToReview() {
-    return this.time_to_review.reduce((acc, time) => acc + time, 0);
+    return this.entries.reduce((acc, entry) => acc + entry.time_to_review, 0);
   }
 
   get avgTimeToMerge() {
-    return this.totalTimeToMerge / this.time_to_merge.length;
+    return this.totalTimeToMerge / this.entries.length;
   }
 
   get avgTimeToReview() {
-    return this.totalTimeToReview / this.time_to_review.length;
+    return this.totalTimeToReview / this.entries.length;
+  }
+
+  get summary() {
+    return this.entries.reduce((acc, entry) => {
+      let total = entry.additions + entry.deletions;
+      acc.totalDiff += total;
+      acc.additions += entry.additions;
+      acc.deletions += entry.deletions;
+      if (!acc.minDiff || acc.minDiff > total) {
+        acc.minDiff = total;
+      }
+      if (!acc.maxDiff || acc.maxDiff < total) {
+        acc.maxDiff = total;
+      }
+
+      let minTime = Math.min(entry.time_to_merge, entry.time_to_review);
+      let maxTime = Math.max(entry.time_to_merge, entry.time_to_review);
+      if (!acc.minTime || acc.minTime > minTime) {
+        acc.minTime = minTime;
+      }
+      if (!acc.maxTime || acc.maxTime < maxTime) {
+        acc.maxTime = maxTime;
+      }
+      return acc;
+    }, { 
+      totalDiff: 0, 
+      additions: 0, 
+      deletions: 0, 
+      minDiff: null, 
+      maxDiff: null,
+      minTime: null,
+      maxTime: null,
+    });
   }
 }
 
@@ -502,11 +550,13 @@ function humanizeDuration(millis) {
   // let [value, unit] = parseTime(millis);
   let [value, unit] = [millis / 1000 / 60 / 60, 'hours'];
 
-  let maxDecimals = 1;
+  return `${toFixed(1, value)} ${unit}`;
+}
 
+function toFixed(maxDecimals, value) {
   let charsAfterDecimal = value.toString().split('.')[1];
   let decimals = charsAfterDecimal ? Math.max(0, charsAfterDecimal.length) : 0;
-  return `${value.toFixed(Math.min(decimals, maxDecimals))} ${unit}`;
+  return value.toFixed(Math.min(decimals, maxDecimals));
 }
 
 const DRAFT = 'draft';
@@ -516,9 +566,12 @@ const MERGED = 'merged';
 const OUTSTANDING = 'outstanding';
 const TAGS = [DRAFT, OLD, NEW, MERGED, OUTSTANDING];
 
+const ADDITIONS = 'additions';
+const DELETIONS = 'deletions';
+const DIFF = 'avg_diff';
 const TIME_TO_MERGE = 'time_to_merge';
 const TIME_TO_REVIEW = 'time_to_review';
-const TIMINGS = [TIME_TO_MERGE, TIME_TO_REVIEW];
+const TIMINGS = [TIME_TO_MERGE, TIME_TO_REVIEW, DIFF];
 
 const REOPENED = 'reopened';
 const READY_FOR_REVIEW = 'ready_for_review';
@@ -628,8 +681,10 @@ function getOpenedForReviewDate(issue, lastReopened) {
 }
 
 function getFirstReviewedDate(issue) {
-  let { reviews } = issue;
-  return reviews[0]?.submitted_at;
+  let { reviews, pull_request } = issue;
+  let { opened_at } = pull_request;
+  let firstReviewSinceOpenedForReview = reviews.find(({ submitted_at }) => submitted_at > opened_at);
+  return firstReviewSinceOpenedForReview?.submitted_at;
 }
 
 function getTags(issue) {
@@ -660,7 +715,9 @@ function getTimeToMerge(issue) {
   return new Date(merged_at) - new Date(opened_at);
 }
 
+// if it was only ever reviewed _before_ it was 'opened for review', 
+// `first_reviewed_at` will be null, and `time_to_review` will be 0
 function getTimeToReview(issue) {
   let { opened_at, first_reviewed_at } = issue.pull_request;
-  return new Date(first_reviewed_at) - new Date(opened_at);
+  return new Date(first_reviewed_at ?? opened_at) - new Date(opened_at);
 }
