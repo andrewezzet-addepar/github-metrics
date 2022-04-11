@@ -127,16 +127,15 @@ class Config {
     return {
       username: 'andrewezzet-addepar',
       token: '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',
-      start: '2021-05-24T00:00:00.000Z',
+      start: '2022-03-28T00:00:00.000Z',
       end: this.today,
       repos: ['AMP', 'Iverson'],
       usernames: [
         'twesely',
-        'aberman-addepar',
-        'addemike',
         'andrewezzet-addepar',
-        'c69-addepar',
-        'john-addepar'
+        'laurenpitruz',
+        'kyle-simmons',
+        'javoltaire',
       ],
     }
   }
@@ -564,7 +563,7 @@ const OLD = 'old';
 const NEW = 'new';
 const MERGED = 'merged';
 const OUTSTANDING = 'outstanding';
-const TAGS = [DRAFT, OLD, NEW, MERGED, OUTSTANDING];
+const TAGS = [/*DRAFT, */OLD, NEW, MERGED, OUTSTANDING];
 
 const ADDITIONS = 'additions';
 const DELETIONS = 'deletions';
@@ -647,8 +646,8 @@ async function fetchPRs(repo, usernames) {
     // if it was ever closed, ignore events and reviews before it was last reopened
     let lastReopened = issue.events.reverse().find(({ event }) => event === REOPENED);
     if (lastReopened) {
-      issue.events = issue.events.slice(events.indexOf(lastReopened));
-      issue.reviews = issues.reviews.filter(({ submitted_at }) => submitted_at > lastReopened.created_at);
+      issue.events = issue.events.slice(issue.events.indexOf(lastReopened));
+      issue.reviews = issue.reviews.filter(({ submitted_at }) => submitted_at > lastReopened.created_at);
     }
 
     issue.pull_request.opened_at = getOpenedForReviewDate(issue, lastReopened);
