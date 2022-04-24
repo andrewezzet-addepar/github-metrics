@@ -74,12 +74,14 @@ function addParamsForm(parent: HTMLDivElement, config: Config) {
   form.lastElementChild.appendChild(button);
   parent.appendChild(formContainer);
 }
+
 function toDateInputFormat(date: Date): string {
   let m = date.getMonth() + 1;
   let d = date.getDate();
   let y = date.getFullYear();
   return `${y}-${(m < 10 ? '0' : '') + m}-${(d < 10 ? '0' : '') + d}`;
 }
+
 function ModalContainer(): HTMLDivElement {
   let container: HTMLDivElement = document.querySelector(`[${CONTAINER_ATTR}]`);
   if (!container) {
@@ -97,6 +99,7 @@ function ModalContainer(): HTMLDivElement {
   }
   return container;
 }
+
 export function renderMetrics(config: Config, ...titledMetrics: { title: string; metrics: GroupedBundledMetrics; }[]) {
   let modal = renderModal();
 
@@ -109,10 +112,12 @@ export function renderMetrics(config: Config, ...titledMetrics: { title: string;
     modal.appendChild(MetricsTable(title, metrics, config));
   }
 }
+
 function renderModal(): HTMLDivElement {
   let container = ModalContainer();
   return Modal(container);
 }
+
 function Modal(container: HTMLDivElement, title = 'Metrics'): HTMLDivElement {
   let modal: HTMLDivElement = container.querySelector(`[${MODAL_ATTR}]`);
   if (!modal) {
@@ -129,9 +134,11 @@ function Modal(container: HTMLDivElement, title = 'Metrics'): HTMLDivElement {
 
   return modal;
 }
+
 function ModalHeader(title: string): string {
   return `<h3>${title}</h3>`;
 }
+
 function MetricsTable(title: string, metrics: GroupedBundledMetrics, config: Config): HTMLDivElement {
   let tableDiv = document.createElement('div');
   tableDiv.setAttribute(TABLE_ATTR, 'true');
@@ -161,9 +168,11 @@ function MetricsTable(title: string, metrics: GroupedBundledMetrics, config: Con
   `;
   return tableDiv;
 }
+
 function formatDate(date: Date): string {
   return `${date.getUTCMonth() + 1}/${date.getUTCDate()}/${date.getUTCFullYear()}`;
 }
+
 function Header(title: string, config: Config): string {
   let startDate = config.getStartDate();
   let endDate = config.getEndDate();
@@ -173,6 +182,7 @@ function Header(title: string, config: Config): string {
     </h4>
   `;
 }
+
 function TableHeaderRow(columns: string[]): string {
   return `
     <tr>
@@ -181,12 +191,15 @@ function TableHeaderRow(columns: string[]): string {
     </tr>
   `;
 }
+
 function HeaderCell(headerName: string): string {
   return `<th>${headerName}</th>`;
 }
+
 function TableCell(value: string | number): string {
   return `<td>${value}</td>`;
 }
+
 function renderGroup([category, metrics]: [string, BundledMetrics]): string {
   let { counts, timings } = metrics;
   return `
@@ -198,9 +211,11 @@ function renderGroup([category, metrics]: [string, BundledMetrics]): string {
     </tr>
   `;
 }
+
 function renderCounts(counts: CountMetrics): string {
   return TAGS.map(tag => TableCell(counts[tag])).join('');
 }
+
 function renderTimings(timings: TimingMetrics): string {
   let { entries, summary } = timings;
   let { additions, deletions } = summary;
@@ -212,6 +227,7 @@ function renderTimings(timings: TimingMetrics): string {
     ${TableCell(diffSummary(avgAdd, avgDel) ?? 'N/A')}
   `;
 }
+
 function renderReviews(reviewCount: number): string {
   if (typeof reviewCount !== 'number') {
     return '';
@@ -219,12 +235,14 @@ function renderReviews(reviewCount: number): string {
 
   return TableCell(reviewCount);
 }
+
 function diffSummary(add: number, del: number): string {
   if (isNaN(add) || isNaN(del)) {
     return null;
   }
   return `${toFixed(0, add + del)}&nbsp;(+${toFixed(0, add)}/-${toFixed(0, del)})`;
 }
+
 function humanizeDuration(millis: number): string {
   if (isNaN(millis)) {
     return null;
@@ -259,6 +277,7 @@ function humanizeDuration(millis: number): string {
 
   return `${toFixed(1, value)} ${unit}`;
 }
+
 function toFixed(maxDecimals: number, value: number): string {
   let charsAfterDecimal = value.toString().split('.')[1];
   let decimals = charsAfterDecimal ? Math.max(0, charsAfterDecimal.length) : 0;
