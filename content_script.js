@@ -120,15 +120,23 @@ class Config {
     let value = this.getValue(PARAMS_FORM_ATTR, 'usernames');
     return parseCommaSeparated(value);
   }
-  
-  today = new Date().toISOString();
 
+  get initStartDate() {
+    let date = new Date();
+    date.setDate(this.initEndDate.getDate() - 14);
+    return date;
+  }
+
+  get initEndDate() {
+    return new Date();
+  }
+  
   get defaults() {
     return {
       username: 'andrewezzet-addepar',
       token: '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',
-      start: '2022-03-28T00:00:00.000Z',
-      end: this.today,
+      start: this.initStartDate.toISOString(),
+      end: this.initEndDate.toISOString(),
       repos: ['AMP', 'Iverson'],
       usernames: [
         'tweseley',
