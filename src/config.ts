@@ -1,6 +1,6 @@
-import { PARAMS_FORM_ATTR } from './constants';
+import { PARAMS_FORM_ATTR } from './rendering';
 
-export default class Config {
+class Config {
   getform(dataAttr: string) {
     return document.querySelector(`[${dataAttr}]`) as HTMLFormElement;
   }
@@ -76,3 +76,5 @@ export default class Config {
     };
   }
 }
+
+export default new Config();
