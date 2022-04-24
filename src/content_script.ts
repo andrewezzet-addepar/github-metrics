@@ -25,11 +25,18 @@ interface PullRequest {
   time_to_review: number;
   opened_at: string;
   merged_at: string;
+  created_at: string;
   first_reviewed_at: string;
+  draft: boolean;
 }
 
 interface User {
   login: string;
+}
+
+interface Event {
+  event: string;
+  created_at: string;
 }
 
 interface Issue {
@@ -42,10 +49,7 @@ interface Issue {
     submitted_at: string;
   }[];
   pull_request: PullRequest;
-  events: {
-    event: string;
-    created_at: string;
-  }[];
+  events: Event[];
 }
 
 class Metrics {
@@ -223,21 +227,20 @@ class Config {
 
 let config = new Config();
 
-interface BundledMetrics {
-  counts: { [key: string]: CountMetrics };
-  timings: { [key: string]: TimingMetrics };
+type GroupedMetrics<T> = {
+  all: T;
+  [key: string]: T;
 }
 
-interface MetricResults {
-  [key: string]: BundledMetrics | {
-    counts: CountMetrics;
-    timings: TimingMetrics;
-  };
-  all?: {
-    counts: CountMetrics;
-    timings: TimingMetrics;
-  };
+type GroupedCountMetrics = GroupedMetrics<CountMetrics>;
+type GroupedTimingMetrics = GroupedMetrics<TimingMetrics>;
+
+interface BundledMetrics {
+  counts: GroupedCountMetrics;
+  timings: GroupedTimingMetrics;
 }
+
+type GroupedBundledMetrics = GroupedMetrics<BundledMetrics>;
 
 async function runMetrics() {
   console.log('running metrics');
@@ -258,13 +261,13 @@ async function runMetrics() {
 
   let metrics = new Metrics(data);
 
-  let resultsByRepo: MetricResults = {};
+  let resultsByRepo: GroupedBundledMetrics = { all: null };
   for (let repo of repos) {
     resultsByRepo[repo] = metrics.getRepoMetrics(repo, { categorizeBy: 'author' });
   }
   resultsByRepo.all = aggregateMetrics(resultsByRepo);
 
-  let resultsByAuthor: MetricResults = {};
+  let resultsByAuthor: GroupedBundledMetrics = { all: null };
   for (let username of usernames) {
     resultsByAuthor[username] = metrics.getUserMetrics(username, { categorizeBy: 'repo' });
   }
@@ -277,14 +280,14 @@ async function runMetrics() {
   );
 }
 
-function aggregateMetrics(metrics) {
-  let total = { counts: new CountMetrics(), timings: new TimingMetrics() }
+function aggregateMetrics(metrics: GroupedBundledMetrics): BundledMetrics {
+  let total = { counts: new CountMetrics(), timings: new TimingMetrics() };
   for (let category of Object.keys(metrics)) {
     let { counts, timings } = metrics[category];
     total.counts.addCounts(counts.all);
     total.timings.addTimings(timings.all);
   }
-  return total;
+  return { counts: { all: total.counts }, timings: { all: total.timings } };
 }
 
 function openMetricsModal() {
@@ -292,20 +295,20 @@ function openMetricsModal() {
   addParamsForm(modal);
 }
 
-function addAuthForm(parent) {
-  let formContainer = document.createElement('div');
-  formContainer.innerHTML = `
-    <form style="margin-top: 8px" ${AUTH_FORM_ATTR}>
-      <label for="username">Username</label>
-      <input id="user" name="user">
-      <label for="token" style="margin-left: 16px;">Token</label>
-      <input id="token" name="token">
-    </form>
-  `;
-  parent.appendChild(formContainer);
-}
+// function addAuthForm(parent) {
+//   let formContainer = document.createElement('div');
+//   formContainer.innerHTML = `
+//     <form style="margin-top: 8px" ${AUTH_FORM_ATTR}>
+//       <label for="username">Username</label>
+//       <input id="user" name="user">
+//       <label for="token" style="margin-left: 16px;">Token</label>
+//       <input id="token" name="token">
+//     </form>
+//   `;
+//   parent.appendChild(formContainer);
+// }
 
-function addParamsForm(parent) {
+function addParamsForm(parent: HTMLDivElement) {
   let formContainer = document.createElement('div');
   formContainer.innerHTML = `
     <style>
@@ -351,14 +354,14 @@ function addParamsForm(parent) {
   parent.appendChild(formContainer);
 }
 
-function toDateInputFormat(date) {
+function toDateInputFormat(date: Date): string {
   let m = date.getMonth() + 1;
   let d = date.getDate();
   let y = date.getFullYear();
   return `${y}-${(m < 10 ? '0' : '') + m}-${(d < 10 ? '0' : '') + d}`;
 }
 
-function ModalContainer() {
+function ModalContainer(): HTMLDivElement {
   let container: HTMLDivElement = document.querySelector(`[${CONTAINER_ATTR}]`);
   if (!container) {
     container = document.createElement('div');
@@ -376,7 +379,7 @@ function ModalContainer() {
   return container;
 }
 
-function renderMetrics(...titledMetrics) {
+function renderMetrics(...titledMetrics: { title: string; metrics: GroupedBundledMetrics; }[]) {
   let modal = renderModal();
 
   let prevTables = document.querySelectorAll(`[${TABLE_ATTR}]`);
@@ -389,13 +392,13 @@ function renderMetrics(...titledMetrics) {
   }
 }
 
-function renderModal() {
+function renderModal(): HTMLDivElement {
   let container = ModalContainer();
   let modal = Modal(container);
   return modal;
 }
 
-function Modal(container, title = 'Metrics') {
+function Modal(container: HTMLDivElement, title = 'Metrics'): HTMLDivElement {
   let modal: HTMLDivElement = document.querySelector(`[${MODAL_ATTR}]`);
   if (!modal) {
     modal = document.createElement('div');
@@ -412,11 +415,11 @@ function Modal(container, title = 'Metrics') {
   return modal;
 }
 
-function ModalHeader(title) {
+function ModalHeader(title: string): string {
   return `<h3>${title}</h3>`;
 }
 
-function MetricsTable(title, metrics) {
+function MetricsTable(title: string, metrics: GroupedBundledMetrics): HTMLDivElement {
   let tableDiv = document.createElement('div');
   tableDiv.setAttribute(TABLE_ATTR, 'true');
   tableDiv.style.marginTop = '24px';
@@ -439,18 +442,18 @@ function MetricsTable(title, metrics) {
         ${TableHeaderRow([...TAGS, ...TIMINGS, REVIEWS])}
       </thead>
       <tbody>
-        ${Object.entries(metrics).map(renderCategory).join('')}
+        ${Object.entries(metrics).map(renderGroup).join('')}
       </tbody>
     </table>
   `;
   return tableDiv;
 }
 
-function formatDate(date) {
+function formatDate(date: Date): string {
   return `${date.getUTCMonth() + 1}/${date.getUTCDate()}/${date.getUTCFullYear()}`;
 }
 
-function Header(title) {
+function Header(title: string): string {
   let startDate = config.getStartDate();
   let endDate = config.getEndDate();
   return `
@@ -460,7 +463,7 @@ function Header(title) {
   `;
 }
 
-function TableHeaderRow(columns) {
+function TableHeaderRow(columns: string[]): string {
   return `
     <tr>
       <th></th>
@@ -469,32 +472,31 @@ function TableHeaderRow(columns) {
   `;
 }
 
-function HeaderCell(headerName) {
+function HeaderCell(headerName: string): string {
   return `<th>${headerName}</th>`;
 }
 
-function TableCell(value) {
+function TableCell(value: string | number): string {
   return `<td>${value}</td>`;
 }
 
-function renderCategory([category, metrics]) {
-  let counts = metrics.counts.all ?? metrics.counts;
-  let timings = metrics.timings.all ?? metrics.timings;
+function renderGroup([category, metrics]: [string, BundledMetrics]): string {
+  let { counts, timings } = metrics;
   return `
     <tr>
       ${HeaderCell(category)}
-      ${renderCounts(counts)}
-      ${renderTimings(timings)}
-      ${renderReviews(counts.reviews)}
+      ${renderCounts(counts.all)}
+      ${renderTimings(timings.all)}
+      ${renderReviews(counts.all.reviews)}
     </tr>
   `;
 }
 
-function renderCounts(counts) {
+function renderCounts(counts: CountMetrics): string {
   return TAGS.map(tag => TableCell(counts[tag])).join('');
 }
 
-function renderTimings(timings) {
+function renderTimings(timings: TimingMetrics): string {
   let { entries, summary } = timings;
   let { additions, deletions } = summary;
   let avgAdd = additions / entries.length;
@@ -506,7 +508,7 @@ function renderTimings(timings) {
   `;
 }
 
-function renderReviews(reviewCount) {
+function renderReviews(reviewCount: number): string {
   if (typeof reviewCount !== 'number') {
     return '';
   }
@@ -514,7 +516,7 @@ function renderReviews(reviewCount) {
   return TableCell(reviewCount);
 }
 
-function diffSummary(add, del) {
+function diffSummary(add: number, del: number): string {
   if (isNaN(add) || isNaN(del)) {
     return null;
   }
@@ -538,7 +540,7 @@ class CountMetrics {
     this.reviews = 0;
   }
 
-  addCounts(counts: { draft: number; old: number; new: number; merged: number; outstanding: number; reviews: number; }) {
+  addCounts(counts: CountMetrics) {
     this.draft += counts.draft;
     this.old += counts.old;
     this.new += counts.new;
@@ -553,7 +555,7 @@ class CountMetrics {
     }
   }
 
-  addReview(issue) {
+  addReview(_issue: Issue) {
     this.reviews += 1;
   }
 }
@@ -625,7 +627,7 @@ class TimingMetrics {
   }
 }
 
-function humanizeDuration(millis) {
+function humanizeDuration(millis: number): string {
   if (isNaN(millis)) {
     return null;
   }
@@ -660,7 +662,7 @@ function humanizeDuration(millis) {
   return `${toFixed(1, value)} ${unit}`;
 }
 
-function toFixed(maxDecimals, value) {
+function toFixed(maxDecimals: number, value: number): string {
   let charsAfterDecimal = value.toString().split('.')[1];
   let decimals = charsAfterDecimal ? Math.max(0, charsAfterDecimal.length) : 0;
   return value.toFixed(Math.min(decimals, maxDecimals));
@@ -778,7 +780,7 @@ async function fetchPRs(repo: string, usernames: string[]): Promise<Issue[]> {
 /**
  * thanks to @bantic for the logic here!
  */
-function getOpenedForReviewDate(issue, lastReopened) {
+function getOpenedForReviewDate(issue: Issue, lastReopened: Event): string {
   let { events, pull_request } = issue;
   let { merged_at } = pull_request;
 
@@ -791,14 +793,14 @@ function getOpenedForReviewDate(issue, lastReopened) {
   return openedForReview.created_at;
 }
 
-function getFirstReviewedDate(issue) {
+function getFirstReviewedDate(issue: Issue): string {
   let { reviews, pull_request } = issue;
   let { opened_at } = pull_request;
   let firstReviewSinceOpenedForReview = reviews.find(({ submitted_at }) => submitted_at > opened_at);
   return firstReviewSinceOpenedForReview?.submitted_at;
 }
 
-function getTags(issue) {
+function getTags(issue: Issue): string[] {
   let { pull_request } = issue;
   let { opened_at, merged_at, draft } = pull_request;
 
@@ -806,29 +808,20 @@ function getTags(issue) {
     return [DRAFT];
   }
 
-  let tags = [];
-  if (opened_at < config.start) {
-    tags.push(OLD);
-  } else {
-    tags.push(NEW);
-  }
-
-  if (merged_at) {
-    tags.push(MERGED);
-  } else {
-    tags.push(OUTSTANDING);
-  }
-  return tags;
+  return [
+    opened_at < config.start ? OLD : NEW,
+    merged_at ? MERGED : OUTSTANDING
+  ];
 }
 
-function getTimeToMerge(issue: Issue) {
+function getTimeToMerge(issue: Issue): number {
   let { opened_at, merged_at } = issue.pull_request;
   return new Date(merged_at).valueOf() - new Date(opened_at).valueOf();
 }
 
 // if it was only ever reviewed _before_ it was 'opened for review', 
 // `first_reviewed_at` will be null, and `time_to_review` will be 0
-function getTimeToReview(issue) {
+function getTimeToReview(issue: Issue): number {
   let { opened_at, first_reviewed_at } = issue.pull_request;
   return new Date(first_reviewed_at ?? opened_at).valueOf() - new Date(opened_at).valueOf();
 }
