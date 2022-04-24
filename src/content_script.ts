@@ -18,14 +18,44 @@ function addMetricsButton() {
 
 addMetricsButton();
 
-class Metrics {
-  issues: object[];
+interface PullRequest {
+  additions: number;
+  deletions: number;
+  time_to_merge: number;
+  time_to_review: number;
+  opened_at: string;
+  merged_at: string;
+  first_reviewed_at: string;
+}
 
-  constructor(issues: object[]) {
+interface User {
+  login: string;
+}
+
+interface Issue {
+  tags: string[];
+  repo: string;
+  author: string;
+  user: User;
+  reviews: {
+    user: User;
+    submitted_at: string;
+  }[];
+  pull_request: PullRequest;
+  events: {
+    event: string;
+    created_at: string;
+  }[];
+}
+
+class Metrics {
+  issues: Issue[];
+
+  constructor(issues: Issue[]) {
     this.issues = issues;
   }
 
-  getIssues({ repo, author, tags, exclude = false }) {
+  getIssues({ repo, author, tags, exclude = false }: { repo?: string; author?: string; tags?: string[], exclude?: boolean }): Issue[] {
     let issues = this.issues;
     if (repo) {
       issues = issues.filter(exclude ? issue => issue.repo !== repo : issue => issue.repo === repo);
@@ -37,7 +67,7 @@ class Metrics {
     return issues;
   }
 
-  getReviews({ author }) {
+  getReviews({ author }): Issue[] {
     let startDate = config.getStartDate();
     let endDate = config.getEndDate();
     let issues = this.getIssues({ author, exclude: true });
@@ -53,18 +83,18 @@ class Metrics {
     });
   }
 
-  getRepoMetrics(repo, { categorizeBy }) {
+  getRepoMetrics(repo: string, { categorizeBy }: { categorizeBy: string; }): BundledMetrics {
     let issues = this.getIssues({ repo });
     return this.getMetrics(issues, { categorizeBy });
   }
 
-  getUserMetrics(author, { categorizeBy }) {
+  getUserMetrics(author: string, { categorizeBy }: { categorizeBy: string; }): BundledMetrics {
     let issues = this.getIssues({ author });
     let reviews = this.getReviews({ author });
     return this.getMetrics(issues, { reviews, categorizeBy });
   }
 
-  getMetrics(issues, { reviews, categorizeBy }) {
+  getMetrics(issues: Issue[], { reviews, categorizeBy }: { categorizeBy: string; reviews?: Issue[]; }): BundledMetrics {
     let metrics = {
       counts: this.getCounts(issues, { reviews, categorizeBy }),
       timings: this.getTimings(issues, { reviews, categorizeBy }),
@@ -72,7 +102,7 @@ class Metrics {
     return metrics;
   }
 
-  getCounts(issues, { reviews = [], categorizeBy }) {
+  getCounts(issues: Issue[], { reviews = [], categorizeBy }: { reviews: Issue[]; categorizeBy: any; }): { all: CountMetrics; [key: string]: CountMetrics } {
     let counts = { all: new CountMetrics() };
     for (let issue of issues) {
       if (categorizeBy) {
@@ -97,7 +127,7 @@ class Metrics {
     return counts;
   }
 
-  getTimings(issues, { reviews, categorizeBy }) {
+  getTimings(issues: Issue[], { reviews, categorizeBy }: { reviews: Issue[]; categorizeBy: any; }): { all: TimingMetrics; [key: string]: TimingMetrics } {
     let timings = { all: new TimingMetrics() };
     for (let issue of issues) {
       if (categorizeBy) {
@@ -113,7 +143,7 @@ class Metrics {
   }
 }
 
-function parseCommaSeparated(value) {
+function parseCommaSeparated(value: string): string[] {
   if (!value.trim().length) {
     return [];
   }
@@ -121,11 +151,11 @@ function parseCommaSeparated(value) {
 }
 
 class Config {
-  getform(dataAttr) {
-    return document.querySelector(`[${dataAttr}]`);
+  getform(dataAttr: string) {
+    return document.querySelector(`[${dataAttr}]`) as HTMLFormElement;
   }
 
-  getValue(formAttr, field) {
+  getValue(formAttr: string, field: string) {
     return this.getform(formAttr).elements[field].value;
   }
 
@@ -193,6 +223,22 @@ class Config {
 
 let config = new Config();
 
+interface BundledMetrics {
+  counts: { [key: string]: CountMetrics };
+  timings: { [key: string]: TimingMetrics };
+}
+
+interface MetricResults {
+  [key: string]: BundledMetrics | {
+    counts: CountMetrics;
+    timings: TimingMetrics;
+  };
+  all?: {
+    counts: CountMetrics;
+    timings: TimingMetrics;
+  };
+}
+
 async function runMetrics() {
   console.log('running metrics');
 
@@ -203,7 +249,7 @@ async function runMetrics() {
     return;
   }
 
-  let data = [];
+  let data: Issue[] = [];
   for (let repo of repos) {
     data = data.concat(await fetchPRs(repo, usernames));
   }
@@ -212,13 +258,13 @@ async function runMetrics() {
 
   let metrics = new Metrics(data);
 
-  let resultsByRepo = {};
+  let resultsByRepo: MetricResults = {};
   for (let repo of repos) {
     resultsByRepo[repo] = metrics.getRepoMetrics(repo, { categorizeBy: 'author' });
   }
   resultsByRepo.all = aggregateMetrics(resultsByRepo);
 
-  let resultsByAuthor = {};
+  let resultsByAuthor: MetricResults = {};
   for (let username of usernames) {
     resultsByAuthor[username] = metrics.getUserMetrics(username, { categorizeBy: 'repo' });
   }
@@ -286,7 +332,7 @@ function addParamsForm(parent) {
     </form>
   `;
   let button = document.createElement('button');
-  button.style = 'margin-left: 8px;';
+  button.style.marginLeft = '8px';
   button.type = 'button';
   button.innerText = 'Run';
   button.onclick = async function() {
@@ -313,20 +359,18 @@ function toDateInputFormat(date) {
 }
 
 function ModalContainer() {
-  let container = document.querySelector(`[${CONTAINER_ATTR}]`)
+  let container: HTMLDivElement = document.querySelector(`[${CONTAINER_ATTR}]`);
   if (!container) {
     container = document.createElement('div');
-    container.setAttribute(CONTAINER_ATTR, true);
-    container.style = `
-      position: absolute; 
-      top: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 100%;
-      height: 100%;
-      background: #00000033;
-    `;
+    container.setAttribute(CONTAINER_ATTR, 'true');
+    container.style.position = 'absolute';
+    container.style.top = '0';
+    container.style.display = 'flex';
+    container.style.alignItems = 'center';
+    container.style.justifyContent = 'center';
+    container.style.width = '100%';
+    container.style.height = '100%';
+    container.style.background = '#00000033';
     document.querySelector('body').appendChild(container);
   }
   return container;
@@ -352,16 +396,14 @@ function renderModal() {
 }
 
 function Modal(container, title = 'Metrics') {
-  let modal = document.querySelector(`[${MODAL_ATTR}]`);
+  let modal: HTMLDivElement = document.querySelector(`[${MODAL_ATTR}]`);
   if (!modal) {
     modal = document.createElement('div');
-    modal.setAttribute(MODAL_ATTR, true);
-    modal.style = `
-      background: white;
-      border-radius: 8px;
-      padding: 8px 16px 16px;
-      box-shadow: 5px 5px 10px 0px gray;
-    `;
+    modal.setAttribute(MODAL_ATTR, 'true');
+    modal.style.background = 'white';
+    modal.style.borderRadius = '8px';
+    modal.style.padding = '8px 16px 16px';
+    modal.style.boxShadow = '5px 5px 10px 0px gray';
   
     modal.innerHTML = ModalHeader(title);
     container.appendChild(modal);
@@ -376,10 +418,8 @@ function ModalHeader(title) {
 
 function MetricsTable(title, metrics) {
   let tableDiv = document.createElement('div');
-  tableDiv.setAttribute(TABLE_ATTR, true);
-  tableDiv.style = `
-    margin-top: 24px;
-  `;
+  tableDiv.setAttribute(TABLE_ATTR, 'true');
+  tableDiv.style.marginTop = '24px';
 
   tableDiv.innerHTML = `
     <style>
@@ -482,6 +522,13 @@ function diffSummary(add, del) {
 }
 
 class CountMetrics {
+  draft: number;
+  old: number;
+  new: number;
+  merged: number;
+  outstanding: number;
+  reviews: number;
+
   constructor() {
     this.draft = 0;
     this.old = 0;
@@ -491,7 +538,7 @@ class CountMetrics {
     this.reviews = 0;
   }
 
-  addCounts(counts) {
+  addCounts(counts: { draft: number; old: number; new: number; merged: number; outstanding: number; reviews: number; }) {
     this.draft += counts.draft;
     this.old += counts.old;
     this.new += counts.new;
@@ -500,7 +547,7 @@ class CountMetrics {
     this.reviews += counts.reviews;
   }
 
-  addIssue(issue) {
+  addIssue(issue: Issue) {
     for (let tag of issue.tags) {
       this[tag] += 1;
     }
@@ -512,23 +559,19 @@ class CountMetrics {
 }
 
 class TimingMetrics {
+  entries: PullRequest[];
+
   constructor() {
     this.entries = [];
   }
 
-  addTimings(timings) {
+  addTimings(timings: { entries: PullRequest[] }) {
     this.entries = this.entries.concat(timings.entries);
   }
 
-  addIssue(issue) {
+  addIssue(issue: Issue) {
     if (issue.tags.includes(MERGED)) {
-      let { additions, deletions, time_to_merge, time_to_review } = issue.pull_request;
-      this.entries.push({
-        additions,
-        deletions,
-        time_to_merge,
-        time_to_review,
-      });
+      this.entries.push(issue.pull_request);
     }
   }
 
@@ -644,7 +687,9 @@ const READY_FOR_REVIEW = 'ready_for_review';
 const REVIEW_REQUESTED = 'review_requested';
 
 class HttpClient {
-  constructor(username, token) {
+  options: { headers: Headers };
+
+  constructor(username: string, token: string) {
     this.options = { 
       headers: new Headers({ 
         'Authorization': 'Basic ' + btoa(`${username}:${token}`),
@@ -653,14 +698,14 @@ class HttpClient {
     };
   }
 
-  async GET(url) {
+  async GET(url: string): Promise<any> {
     return fetch(url, this.options).then(res => res.json())
   }
 }
 
-let http;
+let http: HttpClient;
 
-async function fetchPRs(repo, usernames) {
+async function fetchPRs(repo: string, usernames: string[]): Promise<Issue[]> {
   console.log(`fetching data - repo: ${repo} - usernames: ${usernames}`);
 
   if (!http) {
@@ -677,7 +722,7 @@ async function fetchPRs(repo, usernames) {
     mergedIssuesPromises[username] = http.GET(`${issuesUrl}?creator=${username}&pulls=true&state=closed&since=${config.start}`);
   }
 
-  let issuesById = {};
+  let issuesById: { [id: string]: Issue } = {};
   let pullPromises = {};
   let eventPromises = {};
   let reviewPromises = {};
@@ -776,14 +821,14 @@ function getTags(issue) {
   return tags;
 }
 
-function getTimeToMerge(issue) {
+function getTimeToMerge(issue: Issue) {
   let { opened_at, merged_at } = issue.pull_request;
-  return new Date(merged_at) - new Date(opened_at);
+  return new Date(merged_at).valueOf() - new Date(opened_at).valueOf();
 }
 
 // if it was only ever reviewed _before_ it was 'opened for review', 
 // `first_reviewed_at` will be null, and `time_to_review` will be 0
 function getTimeToReview(issue) {
   let { opened_at, first_reviewed_at } = issue.pull_request;
-  return new Date(first_reviewed_at ?? opened_at) - new Date(opened_at);
+  return new Date(first_reviewed_at ?? opened_at).valueOf() - new Date(opened_at).valueOf();
 }
