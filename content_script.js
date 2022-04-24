@@ -131,7 +131,7 @@ class Config {
       end: this.today,
       repos: ['AMP', 'Iverson'],
       usernames: [
-        'twesely',
+        'tweseley',
         'andrewezzet-addepar',
         'laurenpitruz',
         'kyle-simmons',
@@ -308,8 +308,8 @@ function Modal(container, title = 'Metrics') {
     modal.setAttribute(MODAL_ATTR, true);
     modal.style = `
       background: white;
+      border-radius: 8px;
       padding: 8px 16px 16px;
-      border: 4px solid aliceblue;
       box-shadow: 5px 5px 10px 0px gray;
     `;
   
