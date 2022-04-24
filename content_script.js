@@ -23,32 +23,54 @@ class Metrics {
     this.issues = issues;
   }
 
-  getIssues({ repo, author, tags }) {
-    return this.issues.filter(issue => {
-      return (!repo || issue.repo === repo)
-        && (!author || issue.author === author)
+  getIssues({ repo, author, tags, exclude = false }) {
+    let issues = this.issues;
+    if (repo) {
+      issues = issues.filter(exclude ? issue => issue.repo !== repo : issue => issue.repo === repo);
+    }
+
+    if (author) {
+      issues = issues.filter(exclude ? issue => issue.author !== author : issue => issue.author === author);
+    }
+    return issues;
+  }
+
+  getReviews({ author }) {
+    let startDate = config.getStartDate();
+    let endDate = config.getEndDate();
+    let issues = this.getIssues({ author, exclude: true });
+    return issues.filter(issue => {
+      return issue.reviews.some(review => {
+        if (review.user.login !== author) {
+          return false;
+        }
+
+        let reviewDate = new Date(review.submitted_at);
+        return startDate < reviewDate && reviewDate < endDate;
+      });
     });
   }
 
   getRepoMetrics(repo, { categorizeBy }) {
     let issues = this.getIssues({ repo });
-    return this.getMetrics(issues, categorizeBy);
+    return this.getMetrics(issues, { categorizeBy });
   }
 
   getUserMetrics(author, { categorizeBy }) {
     let issues = this.getIssues({ author });
-    return this.getMetrics(issues, categorizeBy);
+    let reviews = this.getReviews({ author });
+    return this.getMetrics(issues, { reviews, categorizeBy });
   }
 
-  getMetrics(issues, categorizeBy) {
+  getMetrics(issues, { reviews, categorizeBy }) {
     let metrics = {
-      counts: this.getCounts(issues, categorizeBy),
-      timings: this.getTimings(issues, categorizeBy),
+      counts: this.getCounts(issues, { reviews, categorizeBy }),
+      timings: this.getTimings(issues, { reviews, categorizeBy }),
     };
     return metrics;
   }
 
-  getCounts(issues, categorizeBy) {
+  getCounts(issues, { reviews = [], categorizeBy }) {
     let counts = { all: new CountMetrics() };
     for (let issue of issues) {
       if (categorizeBy) {
@@ -60,10 +82,20 @@ class Metrics {
       }
       counts.all.addIssue(issue);
     }
+    for (let issue of reviews) {
+      if (categorizeBy) {
+        let category = issue[categorizeBy];
+        if (!counts[category]) {
+          counts[category] = new CountMetrics();
+        }
+        counts[category].addReview(issue);
+      }
+      counts.all.addReview(issue);
+    }
     return counts;
   }
 
-  getTimings(issues, categorizeBy) {
+  getTimings(issues, { reviews, categorizeBy }) {
     let timings = { all: new TimingMetrics() };
     for (let issue of issues) {
       if (categorizeBy) {
@@ -107,8 +139,16 @@ class Config {
     return this.getValue(PARAMS_FORM_ATTR, 'start');
   }
 
+  getStartDate() {
+    return new Date(this.start);
+  }
+
   get end() {
     return this.getValue(PARAMS_FORM_ATTR, 'end');
+  }
+
+  getEndDate() {
+    return new Date(this.end);
   }
 
   get repos() {
@@ -354,7 +394,7 @@ function MetricsTable(title, metrics) {
     ${Header(title)}
     <table>
       <thead>
-        ${TableHeaderRow([...TAGS, ...TIMINGS])}
+        ${TableHeaderRow([...TAGS, ...TIMINGS, REVIEWS])}
       </thead>
       <tbody>
         ${Object.entries(metrics).map(renderCategory).join('')}
@@ -369,8 +409,8 @@ function formatDate(date) {
 }
 
 function Header(title) {
-  let startDate = new Date(config.start);
-  let endDate = new Date(config.end);
+  let startDate = config.getStartDate();
+  let endDate = config.getEndDate();
   return `
     <h4 style="margin-bottom: 8px">
       ${title} (${formatDate(startDate)} to ${formatDate(endDate)})
@@ -403,6 +443,7 @@ function renderCategory([category, metrics]) {
       ${HeaderCell(category)}
       ${renderCounts(counts)}
       ${renderTimings(timings)}
+      ${renderReviews(counts.reviews)}
     </tr>
   `;
 }
@@ -423,6 +464,14 @@ function renderTimings(timings) {
   `;
 }
 
+function renderReviews(reviewCount) {
+  if (typeof reviewCount !== 'number') {
+    return '';
+  }
+
+  return TableCell(reviewCount);
+}
+
 function diffSummary(add, del) {
   if (isNaN(add) || isNaN(del)) {
     return null;
@@ -437,6 +486,7 @@ class CountMetrics {
     this.new = 0;
     this.merged = 0;
     this.outstanding = 0;
+    this.reviews = 0;
   }
 
   addCounts(counts) {
@@ -445,12 +495,17 @@ class CountMetrics {
     this.new += counts.new;
     this.merged += counts.merged;
     this.outstanding += counts.outstanding;
+    this.reviews += counts.reviews;
   }
 
   addIssue(issue) {
     for (let tag of issue.tags) {
       this[tag] += 1;
     }
+  }
+
+  addReview(issue) {
+    this.reviews += 1;
   }
 }
 
@@ -565,6 +620,8 @@ function toFixed(maxDecimals, value) {
   let decimals = charsAfterDecimal ? Math.max(0, charsAfterDecimal.length) : 0;
   return value.toFixed(Math.min(decimals, maxDecimals));
 }
+
+const REVIEWS = 'reviews';
 
 const DRAFT = 'draft';
 const OLD = 'old';
