@@ -1,0 +1,28 @@
+{
+  "name": "github-metrics",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "webpack --config webpack/webpack.config.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andrewezzet-addepar/github-metrics.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/andrewezzet-addepar/github-metrics/issues"
+  },
+  "homepage": "https://github.com/andrewezzet-addepar/github-metrics#readme",
+  "devDependencies": {
+    "@types/chrome": "0.0.181",
+    "copy-webpack-plugin": "^10.2.4",
+    "ts-loader": "^9.2.8",
+    "typescript": "^4.6.3",
+    "webpack": "^5.72.0",
+    "webpack-cli": "^4.9.2"
+  }
+}
