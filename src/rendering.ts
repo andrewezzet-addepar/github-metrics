@@ -106,6 +106,7 @@ function ModalContainer(): HTMLDivElement {
     container.style.width = '100%';
     container.style.height = '100%';
     container.style.background = '#00000033';
+    container.style.zIndex = '1000';
     document.querySelector('body').appendChild(container);
   }
   return container;

@@ -49,22 +49,26 @@ class Config {
     return this.getValueArray(PARAMS_FORM_ATTR, 'usernames');
   }
 
-  get initStartDate() {
+  getTodayMinusDays(days: number = 0): Date {
     let date = new Date();
-    date.setDate(this.initEndDate.getDate() - 14);
+    date.setDate(date.getDate() - days);
     return date;
   }
 
+  get initStartDate() {
+    return this.getTodayMinusDays(14);
+  }
+
   get initEndDate() {
-    return new Date();
+    return this.getTodayMinusDays();
   }
 
   get defaults() {
     return {
       username: 'andrewezzet-addepar',
       token: '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',
-      start: this.initStartDate.toISOString(),
-      end: this.initEndDate.toISOString(),
+      start: this.initStartDate.toDateString(),
+      end: this.initEndDate.toDateString(),
       repos: ['AMP', 'Iverson'],
       usernames: [
         'tweseley',

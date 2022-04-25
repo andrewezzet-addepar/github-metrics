@@ -70,7 +70,9 @@ class Metrics {
         }
 
         let reviewDate = new Date(review.submitted_at);
-        return startDate < reviewDate && reviewDate < endDate;
+        let inWindow = startDate < reviewDate && reviewDate < endDate;
+        // console.log(inWindow, startDate, reviewDate, endDate);
+        return inWindow;
       });
     });
   }
