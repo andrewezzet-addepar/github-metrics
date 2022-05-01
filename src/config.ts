@@ -1,12 +1,37 @@
 import { PARAMS_FORM_ATTR } from './rendering';
 
-export const GITHUB_KEYS = {
-  token: 'x-github-token',
-  username: 'x-github-username',
-  remember: 'x-github-remember'
+const DEBUG = false;
+
+function makeStorageKey(field: string): string {
+  return `x-github-${field}`;
 }
 
-const DEBUG = false;
+export const FIELD_NAMES = {
+  start: 'start',
+  end: 'end',
+}
+
+export const STORED_FIELD_NAMES = {
+  token: 'token',
+  username: 'username',
+  remember: 'remember',
+  repos: 'repos',
+  usernames: 'usernames'
+}
+
+export const INPUT_TYPES = {
+  string: 'string',
+  boolean: 'boolean',
+  array: 'array'
+}
+
+export const FIELD_TYPES = {
+  token: INPUT_TYPES.string,
+  username: INPUT_TYPES.string,
+  remember: INPUT_TYPES.boolean,
+  repos: INPUT_TYPES.array,
+  usernames: INPUT_TYPES.array
+}
 
 class Config {
   getForm(dataAttr: string) {
@@ -17,16 +42,20 @@ class Config {
     return this.getForm(PARAMS_FORM_ATTR).elements[field];
   }
 
-  getFormValue(field: string): string {
+  getFormValueAsString(field: string): string {
     return this.getFieldElement(field).value;
   }
 
-  getFormValueBoolean(field: string): boolean {
+  getFormValueAsBoolean(field: string): boolean {
     return this.getFieldElement(field).checked;
   }
 
-  getFormValueArray(field: string): string[] {
-    let value = this.getFormValue(field);
+  getFormValueAsArray(field: string): string[] {
+    let value = this.getFieldElement(field).value;
+    return this.getValueArray(value);
+  }
+
+  getValueArray(value: string): string[] {
     if (!value.trim().length) {
       return [];
     }
@@ -34,39 +63,39 @@ class Config {
   }
 
   get username() {
-    return this.getFormValue('username');
+    return this.getFormValueAsString(STORED_FIELD_NAMES.username);
   }
 
   get token() {
-    return this.getFormValue('token');
+    return this.getFormValueAsString(STORED_FIELD_NAMES.token);
   }
 
   get remember() {
-    return this.getFormValueBoolean('remember');
+    return this.getFormValueAsBoolean(STORED_FIELD_NAMES.remember);
+  }
+
+  get repos() {
+    return this.getFormValueAsArray(STORED_FIELD_NAMES.repos);
+  }
+
+  get usernames() {
+    return this.getFormValueAsArray(STORED_FIELD_NAMES.usernames);
   }
 
   get start() {
-    return this.getFormValue('start');
+    return this.getFormValueAsString(FIELD_NAMES.start);
+  }
+
+  get end() {
+    return this.getFormValueAsString(FIELD_NAMES.end);
   }
 
   getStartDate() {
     return new Date(this.start);
   }
 
-  get end() {
-    return this.getFormValue('end');
-  }
-
   getEndDate() {
     return new Date(this.end);
-  }
-
-  get repos() {
-    return this.getFormValueArray('repos');
-  }
-
-  get usernames() {
-    return this.getFormValueArray('usernames');
   }
 
   getTodayMinusDays(days: number = 0): Date {
@@ -87,43 +116,27 @@ class Config {
     return chrome.storage.sync ?? chrome.storage.local
   }
 
-  async getStored(key: string) {
-    await this.logAllStored();
+  async getStored(field: string) {
+    let key = makeStorageKey(field);
     return (await this.storage.get(key))[key];
   }
 
-  async initUsername() {
-    return await this.getStored(GITHUB_KEYS.username) ?? '';
+  async getStoredFieldWithDefault(field: string) {
+    return await this.getStored(field) ?? this.defaults[field];
   }
 
-  async initToken() {
-    return await this.getStored(GITHUB_KEYS.token) ?? '';
+  async initStoredField(field: string) {
+    return await this.getStoredFieldWithDefault(field);
   }
 
-  async initRemember() {
-    return await this.getStored(GITHUB_KEYS.remember) ?? true;
-  }
-
-  async logAllStored() {
-    if (!DEBUG) {
-      return;
-    }
-    console.log(await this.storage.get(Object.values(GITHUB_KEYS)));
-  }
-
-  async store(key: string, value: string | boolean) {
-    if (DEBUG) {
-      console.log(key, value);
-    }
+  async store(field: string, value: string | boolean | string[]) {
+    let key = makeStorageKey(field);
     await this.storage.set({ [key]: value });
-    await this.logAllStored();
   }
 
   async clearAllStored() {
-    this.logAllStored();
     await this.storage.clear();
-    await this.store(GITHUB_KEYS.remember, false);
-    await this.logAllStored();
+    await this.store(STORED_FIELD_NAMES.remember, false);
   }
 
   async updateStore(clear: boolean) {
@@ -131,12 +144,8 @@ class Config {
       return this.clearAllStored();
     }
 
-    for (let field of Object.keys(GITHUB_KEYS)) {
-      let key = GITHUB_KEYS[field];
-      let value = field === 'remember'
-        ? this.getFormValueBoolean(field)
-        : this.getFormValue(field);
-      await this.store(key, value)
+    for (let field of Object.keys(STORED_FIELD_NAMES)) {
+      await this.store(field, this[field]);
     }
   }
 
@@ -144,20 +153,17 @@ class Config {
     if (input.name === 'remember') {
       this.updateStore(!input.checked);
     } else if (this.remember) {
-      this.store(GITHUB_KEYS[input.name], input.value);
+      this.store(input.name, input.value);
     }
   }
 
   get defaults() {
     return {
+      username: '',
+      token: '',
+      remember: true,
       repos: ['AMP', 'Iverson'],
-      usernames: [
-        'tweseley',
-        'andrewezzet-addepar',
-        'laurenpitruz',
-        'kyle-simmons',
-        'javoltaire',
-      ],
+      usernames: [],
     };
   }
 }

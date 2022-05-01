@@ -184,8 +184,8 @@ export async function runMetrics() {
 
   console.log(resultsByRepo, resultsByAuthor);
   renderMetrics(
-    { title: 'Results by Repo', metrics: resultsByRepo },
-    { title: 'Results by Author', metrics: resultsByAuthor }
+    { title: 'Metrics by Repo', metrics: resultsByRepo },
+    { title: 'Metrics by Author', metrics: resultsByAuthor }
   );
 }
 

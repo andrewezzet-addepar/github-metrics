@@ -1,6 +1,6 @@
-import config from './config';
+import config, { STORED_FIELD_NAMES } from './config';
 import { REVIEWS, TAGS, TIMINGS } from './constants';
-import { diffSummary, formatDate, humanizeDuration, toFixed } from './utils';
+import { diffSummary, formatDate, humanizeDuration } from './utils';
 import { runMetrics, GroupedBundledMetrics, BundledMetrics, CountMetrics, TimingMetrics } from "./metrics";
 
 export const CONTAINER_ATTR = 'data-metrics-container';
@@ -104,16 +104,18 @@ async function openMetricsModal() {
   let form = formContainer.querySelector('form');
   form.elements['start'].value = toDateInputFormat(new Date(config.initStartDate()));
   form.elements['end'].value = toDateInputFormat(new Date(config.initEndDate()));
-  form.elements['repos'].value = config.defaults.repos;
-  form.elements['usernames'].value = config.defaults.usernames;
 
-  form.elements['token'].value = await config.initToken();
-  form.elements['username'].value = await config.initUsername();
-  form.elements['remember'].checked = await config.initRemember();
-
-  form.elements['token'].oninput = storedValueChanged;
-  form.elements['username'].oninput = storedValueChanged;
-  form.elements['remember'].onclick = storedValueChanged;
+  for (let field of Object.keys(STORED_FIELD_NAMES)) {
+    let input = form.elements[field] as HTMLInputElement;
+    let initialValue = await config.initStoredField(field);
+    if (input.type === 'checkbox') {
+      input.checked = initialValue;
+      input.onclick = storedValueChanged;
+    } else {
+      input.value = initialValue;
+      input.oninput = storedValueChanged;
+    }
+  }
 
   form.lastElementChild.appendChild(button);
   modal.appendChild(formContainer);
