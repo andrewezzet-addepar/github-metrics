@@ -1,14 +1,15 @@
-import config, { STORED_FIELD_NAMES } from './config';
+import config, { FIELD_NAMES, STORED_FIELD_NAMES } from './config';
 import { REVIEWS, TAGS, TIMINGS } from './constants';
 import { diffSummary, formatDate, humanizeDuration } from './utils';
-import { runMetrics, GroupedBundledMetrics, BundledMetrics, CountMetrics, TimingMetrics } from "./metrics";
+import { runMetrics, GroupedBundledMetrics, CountMetrics, TimingMetrics } from "./metrics";
+
+export const ESCAPE_KEY_EVENT = 'keyup';
 
 export const CONTAINER_ATTR = 'data-metrics-container';
 export const MODAL_ATTR = 'data-metrics-modal';
+export const MODAL_CLOSE_ATTR = 'data-close';
 export const PARAMS_FORM_ATTR = 'data-metrics-params-form';
 export const TABLE_ATTR = 'data-metrics-table';
-
-export const ESCAPE_KEY_EVENT = 'keyup';
 
 export default function render() {
   addMetricsButton();
@@ -16,29 +17,41 @@ export default function render() {
 
 function addMetricsButton() {
   let anchor = document.querySelector('notification-indicator').parentElement;
-  let button = document.createElement('button');
-  button.style.marginRight = '48px';
-  button.innerText = 'Metrics';
-  anchor.insertAdjacentElement('beforebegin', button);
-  button.onclick = () => openMetricsModal();
+  let div = document.createElement('div');
+  div.innerHTML = `
+    <style>
+      .metrics-button {
+        margin-right: 48px;
+        border-radius: 4px;
+        padding: 2px 10px;
+        background: white;
+        font-weight: 500;
+        color: var(--color-fg-default);
+        border: 1px solid var(--color-border-default);
+      }
+
+      .metrics-button:hover {
+        background: var(--color-canvas-subtle);
+      }
+    
+    </style>
+    <button class="metrics-button">Metrics</button>
+  `;
+  let button = div.querySelector('button');
+  button.onclick = openMetricsModal;
+  anchor.insertAdjacentElement('beforebegin', div);
 }
 
 export function renderMetrics(...titledMetrics: { title: string; metrics: GroupedBundledMetrics; }[]) {
-  let modal = renderModal();
-
   let prevTables = document.querySelectorAll(`[${TABLE_ATTR}]`);
   for (let table of prevTables) {
-    modal.removeChild(table);
+    table.remove();
   }
 
+  let modal = Modal();
   for (let { title, metrics } of titledMetrics) {
     modal.appendChild(MetricsTable(title, metrics));
   }
-}
-
-function renderModal(): HTMLDivElement {
-  let container = ModalContainer();
-  return Modal(container);
 }
 
 function escapeKeyHandler(event: KeyboardEvent) {
@@ -48,15 +61,15 @@ function escapeKeyHandler(event: KeyboardEvent) {
 }
 
 function closeMetricsModal() {
-  let modalContainer = ModalContainer();
-  modalContainer.remove();
+  let container = ModalContainer();
+  container.remove();
   document.removeEventListener(ESCAPE_KEY_EVENT, escapeKeyHandler);
 }
 
 async function openMetricsModal() {
   document.addEventListener(ESCAPE_KEY_EVENT, escapeKeyHandler);
 
-  let modal = renderModal();
+  let modal = Modal();
   let formContainer = document.createElement('div');
   formContainer.innerHTML = `
     <style>
@@ -102,8 +115,10 @@ async function openMetricsModal() {
     button.innerText = 'Run';
   };
   let form = formContainer.querySelector('form');
-  form.elements['start'].value = toDateInputFormat(new Date(config.initStartDate()));
-  form.elements['end'].value = toDateInputFormat(new Date(config.initEndDate()));
+  for (let field of Object.keys(FIELD_NAMES)) {
+    let input = form.elements[field];
+    input.value = config.initField(field);
+  }
 
   for (let field of Object.keys(STORED_FIELD_NAMES)) {
     let input = form.elements[field] as HTMLInputElement;
@@ -126,15 +141,8 @@ function storedValueChanged(event: PointerEvent) {
   config.storedValueChanged(input);
 }
 
-function toDateInputFormat(date: Date): string {
-  let m = date.getMonth() + 1;
-  let d = date.getDate();
-  let y = date.getFullYear();
-  return `${y}-${(m < 10 ? '0' : '') + m}-${(d < 10 ? '0' : '') + d}`;
-}
-
 function ModalContainer(): HTMLDivElement {
-  let container: HTMLDivElement = document.querySelector(`[${CONTAINER_ATTR}]`);
+  let container = document.querySelector(`[${CONTAINER_ATTR}]`) as HTMLDivElement;
   if (!container) {
     container = document.createElement('div');
     container.setAttribute(CONTAINER_ATTR, 'true');
@@ -152,8 +160,9 @@ function ModalContainer(): HTMLDivElement {
   return container;
 }
 
-function Modal(container: HTMLDivElement, title = 'PR Metrics'): HTMLDivElement {
-  let modal: HTMLDivElement = container.querySelector(`[${MODAL_ATTR}]`);
+function Modal(title = 'PR Metrics'): HTMLDivElement {
+  let container = ModalContainer();
+  let modal = container.querySelector(`[${MODAL_ATTR}]`) as HTMLDivElement;
   if (!modal) {
     modal = document.createElement('div');
     modal.setAttribute(MODAL_ATTR, 'true');
@@ -162,8 +171,13 @@ function Modal(container: HTMLDivElement, title = 'PR Metrics'): HTMLDivElement 
     modal.style.padding = '8px 16px 16px';
     modal.style.boxShadow = '5px 5px 10px 0px gray';
 
-    modal.innerHTML = ModalHeader(title);
-    let closeButton = modal.querySelector('button[data-close]') as HTMLButtonElement;
+    modal.innerHTML = `
+      <div style="display: flex; flex-direction: row; justify-content: space-between">
+        <h3>${title}</h3>
+        <button ${MODAL_CLOSE_ATTR} style="width: 30px">x</button>
+      </div>
+    `;
+    let closeButton = modal.querySelector(`[${MODAL_CLOSE_ATTR}]`) as HTMLButtonElement;
     closeButton.onclick = closeMetricsModal;
     container.appendChild(modal);
   }
@@ -171,18 +185,7 @@ function Modal(container: HTMLDivElement, title = 'PR Metrics'): HTMLDivElement 
   return modal;
 }
 
-function ModalHeader(title: string): string {
-  return `
-    <div style="display: flex; flex-direction: row; justify-content: space-between">
-      <h3>${title}</h3>
-      <button data-close style="width: 30px">
-        x
-      </button>
-    </div>
-  `;
-}
-
-function MetricsTable(title: string, metrics: GroupedBundledMetrics): HTMLDivElement {
+function MetricsTable(title: string, groupedMetrics: GroupedBundledMetrics): HTMLDivElement {
   let tableDiv = document.createElement('div');
   tableDiv.setAttribute(TABLE_ATTR, 'true');
   tableDiv.style.marginTop = '24px';
@@ -199,54 +202,38 @@ function MetricsTable(title: string, metrics: GroupedBundledMetrics): HTMLDivEle
         border-collapse: collapse;
       }
     </style>
-    ${Header(title)}
-    <table>
-      <thead>
-        ${TableHeaderRow([...TAGS, ...TIMINGS, REVIEWS])}
-      </thead>
-      <tbody>
-        ${Object.entries(metrics).map(MetricRow).join('')}
-      </tbody>
-    </table>
-  `;
-  return tableDiv;
-}
-
-function Header(title: string): string {
-  return `
     <h4 style="margin-bottom: 8px">
       ${title} (${formatDate(config.getStartDate())} to ${formatDate(config.getEndDate())})
     </h4>
+    <table>
+      <thead>
+        <tr>
+          ${HeaderCell()}
+          ${[...TAGS, ...TIMINGS, REVIEWS].map(field => HeaderCell(field)).join('')}
+        </tr>
+      </thead>
+      <tbody>
+        ${Object.entries(groupedMetrics).map(([category, { counts, timings }]) => `
+          <tr>
+            ${HeaderCell(category)}
+            ${CountsCells(counts.all)}
+            ${TimingCells(timings.all)}
+            ${ReviewsCell(counts.all.reviews)}
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
   `;
+
+  return tableDiv;
 }
 
-function TableHeaderRow(columns: string[]): string {
-  return `
-    <tr>
-      <th></th>
-      ${columns.map(HeaderCell).join('')}
-    </tr>
-  `;
-}
-
-function HeaderCell(headerName: string): string {
+function HeaderCell(headerName: string = ''): string {
   return `<th>${headerName}</th>`;
 }
 
 function TableCell(value: string | number): string {
   return `<td>${value}</td>`;
-}
-
-function MetricRow([category, metrics]: [string, BundledMetrics]): string {
-  let { counts, timings } = metrics;
-  return `
-    <tr>
-      ${HeaderCell(category)}
-      ${CountsCells(counts.all)}
-      ${TimingCells(timings.all)}
-      ${ReviewsCell(counts.all.reviews)}
-    </tr>
-  `;
 }
 
 function CountsCells(counts: CountMetrics): string {

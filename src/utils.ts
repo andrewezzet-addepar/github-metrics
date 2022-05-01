@@ -1,3 +1,17 @@
+export function getTodayMinusDays(days: number = 0): string {
+  let date = new Date();
+  date.setDate(date.getDate() - days);
+  return toDateInputFormat(date.toDateString());
+}
+
+function toDateInputFormat(dateString: string): string {
+  let date = new Date(dateString);
+  let m = date.getMonth() + 1;
+  let d = date.getDate();
+  let y = date.getFullYear();
+  return `${y}-${(m < 10 ? '0' : '') + m}-${(d < 10 ? '0' : '') + d}`;
+}
+
 export function formatDate(date: Date): string {
   return `${date.getUTCMonth() + 1}/${date.getUTCDate()}/${date.getUTCFullYear()}`;
 }

@@ -1,4 +1,5 @@
 import { PARAMS_FORM_ATTR } from './rendering';
+import { getTodayMinusDays } from './utils';
 
 const DEBUG = false;
 
@@ -38,20 +39,20 @@ class Config {
     return document.querySelector(`[${dataAttr}]`) as HTMLFormElement;
   }
 
-  getFieldElement(field: string): HTMLInputElement {
+  getFieldInput(field: string): HTMLInputElement {
     return this.getForm(PARAMS_FORM_ATTR).elements[field];
   }
 
   getFormValueAsString(field: string): string {
-    return this.getFieldElement(field).value;
+    return this.getFieldInput(field).value;
   }
 
   getFormValueAsBoolean(field: string): boolean {
-    return this.getFieldElement(field).checked;
+    return this.getFieldInput(field).checked;
   }
 
   getFormValueAsArray(field: string): string[] {
-    let value = this.getFieldElement(field).value;
+    let value = this.getFieldInput(field).value;
     return this.getValueArray(value);
   }
 
@@ -98,18 +99,12 @@ class Config {
     return new Date(this.end);
   }
 
-  getTodayMinusDays(days: number = 0): Date {
-    let date = new Date();
-    date.setDate(date.getDate() - days);
-    return date;
-  }
-
   initStartDate() {
-    return this.getTodayMinusDays(14).toDateString();
+    return ;
   }
 
   initEndDate() {
-    return this.getTodayMinusDays().toDateString();
+    return ;
   }
 
   get storage() {
@@ -121,12 +116,12 @@ class Config {
     return (await this.storage.get(key))[key];
   }
 
-  async getStoredFieldWithDefault(field: string) {
+  async initStoredField(field: string) {
     return await this.getStored(field) ?? this.defaults[field];
   }
 
-  async initStoredField(field: string) {
-    return await this.getStoredFieldWithDefault(field);
+  initField(field: string) {
+    return this.defaults[field];
   }
 
   async store(field: string, value: string | boolean | string[]) {
@@ -139,7 +134,7 @@ class Config {
     await this.store(STORED_FIELD_NAMES.remember, false);
   }
 
-  async updateStore(clear: boolean) {
+  async updateAllStored(clear: boolean) {
     if (clear) {
       return this.clearAllStored();
     }
@@ -151,7 +146,7 @@ class Config {
 
   storedValueChanged(input: HTMLInputElement) {
     if (input.name === 'remember') {
-      this.updateStore(!input.checked);
+      this.updateAllStored(!input.checked);
     } else if (this.remember) {
       this.store(input.name, input.value);
     }
@@ -164,6 +159,8 @@ class Config {
       remember: true,
       repos: ['AMP', 'Iverson'],
       usernames: [],
+      end: getTodayMinusDays(),
+      start: getTodayMinusDays(14),
     };
   }
 }
