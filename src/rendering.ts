@@ -8,6 +8,8 @@ export const MODAL_ATTR = 'data-metrics-modal';
 export const PARAMS_FORM_ATTR = 'data-metrics-params-form';
 export const TABLE_ATTR = 'data-metrics-table';
 
+export const ESCAPE_KEY_EVENT = 'keyup';
+
 export default function render() {
   addMetricsButton();
 }
@@ -39,7 +41,21 @@ function renderModal(): HTMLDivElement {
   return Modal(container);
 }
 
-function openMetricsModal() {
+function escapeKeyHandler(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    closeMetricsModal();
+  }
+}
+
+function closeMetricsModal() {
+  let modalContainer = ModalContainer();
+  modalContainer.remove();
+  document.removeEventListener(ESCAPE_KEY_EVENT, escapeKeyHandler);
+}
+
+async function openMetricsModal() {
+  document.addEventListener(ESCAPE_KEY_EVENT, escapeKeyHandler);
+
   let modal = renderModal();
   let formContainer = document.createElement('div');
   formContainer.innerHTML = `
@@ -52,6 +68,14 @@ function openMetricsModal() {
       }
     </style>
     <form style="margin-top: 8px" ${PARAMS_FORM_ATTR}>
+      <div class="form-group">
+        <label for="username">User</label>
+        <input id="username" name="username">
+        <label for="token">Token</label>
+        <input type="password" id="token" name="token">
+        <label for="remember">Remember</label>
+        <input type="checkbox" id="remember" name="remember">
+      </div>
       <div class="form-group">
         <label for="start">Start</label>
         <input type="date" id="start" name="start">
@@ -78,12 +102,26 @@ function openMetricsModal() {
     button.innerText = 'Run';
   };
   let form = formContainer.querySelector('form');
-  form.elements['start'].value = toDateInputFormat(new Date(config.defaults.start));
-  form.elements['end'].value = toDateInputFormat(new Date(config.defaults.end));
+  form.elements['start'].value = toDateInputFormat(new Date(config.initStartDate()));
+  form.elements['end'].value = toDateInputFormat(new Date(config.initEndDate()));
   form.elements['repos'].value = config.defaults.repos;
   form.elements['usernames'].value = config.defaults.usernames;
+
+  form.elements['token'].value = await config.initToken();
+  form.elements['username'].value = await config.initUsername();
+  form.elements['remember'].checked = await config.initRemember();
+
+  form.elements['token'].oninput = storedValueChanged;
+  form.elements['username'].oninput = storedValueChanged;
+  form.elements['remember'].onclick = storedValueChanged;
+
   form.lastElementChild.appendChild(button);
   modal.appendChild(formContainer);
+}
+
+function storedValueChanged(event: PointerEvent) {
+  let input = event.target as HTMLInputElement;
+  config.storedValueChanged(input);
 }
 
 function toDateInputFormat(date: Date): string {
@@ -98,7 +136,7 @@ function ModalContainer(): HTMLDivElement {
   if (!container) {
     container = document.createElement('div');
     container.setAttribute(CONTAINER_ATTR, 'true');
-    container.style.position = 'absolute';
+    container.style.position = 'fixed';
     container.style.top = '0';
     container.style.display = 'flex';
     container.style.alignItems = 'center';
@@ -112,7 +150,7 @@ function ModalContainer(): HTMLDivElement {
   return container;
 }
 
-function Modal(container: HTMLDivElement, title = 'Metrics'): HTMLDivElement {
+function Modal(container: HTMLDivElement, title = 'PR Metrics'): HTMLDivElement {
   let modal: HTMLDivElement = container.querySelector(`[${MODAL_ATTR}]`);
   if (!modal) {
     modal = document.createElement('div');
@@ -123,6 +161,8 @@ function Modal(container: HTMLDivElement, title = 'Metrics'): HTMLDivElement {
     modal.style.boxShadow = '5px 5px 10px 0px gray';
 
     modal.innerHTML = ModalHeader(title);
+    let closeButton = modal.querySelector('button[data-close]') as HTMLButtonElement;
+    closeButton.onclick = closeMetricsModal;
     container.appendChild(modal);
   }
 
@@ -130,7 +170,14 @@ function Modal(container: HTMLDivElement, title = 'Metrics'): HTMLDivElement {
 }
 
 function ModalHeader(title: string): string {
-  return `<h3>${title}</h3>`;
+  return `
+    <div style="display: flex; flex-direction: row; justify-content: space-between">
+      <h3>${title}</h3>
+      <button data-close style="width: 30px">
+        x
+      </button>
+    </div>
+  `;
 }
 
 function MetricsTable(title: string, metrics: GroupedBundledMetrics): HTMLDivElement {
