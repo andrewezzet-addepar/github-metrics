@@ -60,8 +60,7 @@ class Metrics {
   }
 
   getReviews({ author }): Issue[] {
-    let startDate = config.getStartDate();
-    let endDate = config.getEndDate();
+    let { startDate, endDate } = config;
     let issues = this.getIssues({ author, exclude: true });
     return issues.filter(issue => {
       return issue.reviews.some(review => {

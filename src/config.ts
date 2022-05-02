@@ -91,20 +91,12 @@ class Config {
     return this.getFormValueAsString(FIELD_NAMES.end);
   }
 
-  getStartDate() {
+  get startDate() {
     return new Date(this.start);
   }
 
-  getEndDate() {
+  get endDate() {
     return new Date(this.end);
-  }
-
-  initStartDate() {
-    return ;
-  }
-
-  initEndDate() {
-    return ;
   }
 
   get storage() {
