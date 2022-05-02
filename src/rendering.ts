@@ -31,6 +31,7 @@ function addMetricsButton() {
       }
 
       .metrics-button:hover {
+        opacity: 0.95;
         background: var(--color-canvas-subtle);
       }
     
@@ -70,6 +71,10 @@ async function openMetricsModal() {
   document.addEventListener(ESCAPE_KEY_EVENT, escapeKeyHandler);
 
   let modal = Modal();
+  if (modal.querySelector(`[${PARAMS_FORM_ATTR}]`)) {
+    return;
+  }
+
   let formContainer = document.createElement('div');
   formContainer.innerHTML = `
     <style>
@@ -172,9 +177,21 @@ function Modal(title = 'PR Metrics'): HTMLDivElement {
     modal.style.boxShadow = '5px 5px 10px 0px gray';
 
     modal.innerHTML = `
+      <style>
+        button.close {
+          width: 24px;
+          height: 24px;
+          line-height: 16px;
+          display: flex;
+          position: relative;
+          top: 6px;
+        }
+      </style>
       <div style="display: flex; flex-direction: row; justify-content: space-between">
         <h3>${title}</h3>
-        <button ${MODAL_CLOSE_ATTR} style="width: 30px">x</button>
+        <button ${MODAL_CLOSE_ATTR} class="close">
+          x
+        </button>
       </div>
     `;
     let closeButton = modal.querySelector(`[${MODAL_CLOSE_ATTR}]`) as HTMLButtonElement;
@@ -203,7 +220,7 @@ function MetricsTable(title: string, groupedMetrics: GroupedBundledMetrics): HTM
       }
     </style>
     <h4 style="margin-bottom: 8px">
-      ${title} (${formatDate(config.getStartDate())} to ${formatDate(config.getEndDate())})
+      ${title} (${formatDate(config.startDate)} to ${formatDate(config.endDate)})
     </h4>
     <table>
       <thead>
