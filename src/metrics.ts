@@ -1,12 +1,13 @@
 import config from './config';
 import { renderMetrics } from './rendering';
-import { DRAFT, MERGED, NEW, OLD, OUTSTANDING } from './constants';
+import { DRAFT, MERGED, NEW, OLD, OPEN } from './constants';
 
 export const REOPENED = 'reopened';
 export const READY_FOR_REVIEW = 'ready_for_review';
 export const REVIEW_REQUESTED = 'review_requested';
 
 interface PullRequest {
+  url: string;
   additions: number;
   deletions: number;
   time_to_merge: number;
@@ -38,64 +39,71 @@ interface Issue {
   }[];
   pull_request: PullRequest;
   events: Event[];
+  closed_at: string;
+  number: string;
+}
+
+interface Review {
+  id: string;
+  repo: string;
+  author: string;
+  isTeamReview: boolean;
 }
 
 class Metrics {
   issues: Issue[];
+  reviews: Review[];
 
-  constructor(issues: Issue[]) {
+  constructor(issues: Issue[], reviews: Review[]) {
     this.issues = issues;
+    this.reviews = reviews;
   }
 
-  getIssues({ repo, author, tags, exclude = false }: { repo?: string; author?: string; tags?: string[]; exclude?: boolean; }): Issue[] {
+  getIssues({ repo, author }: { repo?: string; author?: string; } = {}): Issue[] {
     let issues = this.issues;
     if (repo) {
-      issues = issues.filter(exclude ? issue => issue.repo !== repo : issue => issue.repo === repo);
+      issues = issues.filter(issue => issue.repo === repo);
     }
 
     if (author) {
-      issues = issues.filter(exclude ? issue => issue.author !== author : issue => issue.author === author);
+      issues = issues.filter(issue => issue.author === author);
     }
     return issues;
   }
 
-  getReviews({ author }): Issue[] {
-    let { startDate, endDate } = config;
-    let issues = this.getIssues({ author, exclude: true });
-    return issues.filter(issue => {
-      return issue.reviews.some(review => {
-        if (review.user.login !== author) {
-          return false;
-        }
+  getReviews({ repo, author }: { repo?: string; author?: string; } = {}): Review[] {
+    let reviews = this.reviews;
+    if (repo) {
+      reviews = reviews.filter(review => review.repo === repo);
+    }
 
-        let reviewDate = new Date(review.submitted_at);
-        let inWindow = startDate <= reviewDate && reviewDate < endDate;
-        // console.log(inWindow, startDate, reviewDate, endDate);
-        return inWindow;
-      });
-    });
+    if (author) {
+      reviews = reviews.filter(review => review.author === author);
+    }
+    return reviews;
   }
 
-  getRepoMetrics(repo: string, { categorizeBy }: { categorizeBy: string; }): BundledMetrics {
+  getRepoMetrics(repo: string, { categorizeBy }: { categorizeBy?: string; }): BundledMetrics {
     let issues = this.getIssues({ repo });
-    return this.getMetrics(issues, { categorizeBy });
+    let reviews = this.getReviews({ repo });
+    return this.getMetrics(issues, reviews, { categorizeBy });
   }
 
-  getUserMetrics(author: string, { categorizeBy }: { categorizeBy: string; }): BundledMetrics {
+  getUserMetrics(author: string, { categorizeBy }: { categorizeBy?: string; }): BundledMetrics {
     let issues = this.getIssues({ author });
     let reviews = this.getReviews({ author });
-    return this.getMetrics(issues, { reviews, categorizeBy });
+    return this.getMetrics(issues, reviews, { categorizeBy });
   }
 
-  getMetrics(issues: Issue[], { reviews, categorizeBy }: { categorizeBy: string; reviews?: Issue[]; }): BundledMetrics {
+  getMetrics(issues: Issue[], reviews: Review[], { categorizeBy }: { categorizeBy?: string; }): BundledMetrics {
     let metrics = {
-      counts: this.getCounts(issues, { reviews, categorizeBy }),
-      timings: this.getTimings(issues, { reviews, categorizeBy }),
+      counts: this.getCounts(issues, reviews, { categorizeBy }),
+      timings: this.getTimings(issues, { categorizeBy }),
     };
     return metrics;
   }
 
-  getCounts(issues: Issue[], { reviews = [], categorizeBy }: { reviews: Issue[]; categorizeBy: any; }): { all: CountMetrics;[key: string]: CountMetrics; } {
+  getCounts(issues: Issue[], reviews: Review[], { categorizeBy }: { categorizeBy?: string; }): { all: CountMetrics;[key: string]: CountMetrics; } {
     let counts = { all: new CountMetrics() };
     for (let issue of issues) {
       if (categorizeBy) {
@@ -120,7 +128,7 @@ class Metrics {
     return counts;
   }
 
-  getTimings(issues: Issue[], { reviews, categorizeBy }: { reviews: Issue[]; categorizeBy: any; }): { all: TimingMetrics;[key: string]: TimingMetrics; } {
+  getTimings(issues: Issue[], { categorizeBy }: { categorizeBy?: string }): { all: TimingMetrics;[key: string]: TimingMetrics; } {
     let timings = { all: new TimingMetrics() };
     for (let issue of issues) {
       if (categorizeBy) {
@@ -160,14 +168,17 @@ export async function runMetrics() {
     return;
   }
 
-  let data: Issue[] = [];
+  let pulls: Issue[] = [];
   for (let repo of repos) {
-    data = data.concat(await fetchPRs(repo, usernames));
+    pulls = pulls.concat(await fetchPRs(repo, usernames));
   }
 
-  console.log(data);
+  let reviews = await fetchReviews(usernames);
 
-  let metrics = new Metrics(data);
+  console.log(pulls);
+  console.log(reviews);
+
+  let metrics = new Metrics(pulls, reviews);
 
   let resultsByRepo: GroupedBundledMetrics = { all: null };
   for (let repo of repos) {
@@ -199,29 +210,22 @@ function aggregateMetrics(metrics: GroupedBundledMetrics): BundledMetrics {
 }
 
 export class CountMetrics {
-  draft: number;
-  old: number;
-  new: number;
-  merged: number;
-  outstanding: number;
-  reviews: number;
-
-  constructor() {
-    this.draft = 0;
-    this.old = 0;
-    this.new = 0;
-    this.merged = 0;
-    this.outstanding = 0;
-    this.reviews = 0;
-  }
+  draft: number = 0;
+  old: number = 0;
+  new: number = 0;
+  merged: number = 0;
+  open: number = 0;
+  teamReviewCount: number = 0;
+  otherReviewCount: number = 0;
 
   addCounts(counts: CountMetrics) {
     this.draft += counts.draft;
     this.old += counts.old;
     this.new += counts.new;
     this.merged += counts.merged;
-    this.outstanding += counts.outstanding;
-    this.reviews += counts.reviews;
+    this.open += counts.open;
+    this.teamReviewCount += counts.teamReviewCount;
+    this.otherReviewCount += counts.otherReviewCount;
   }
 
   addIssue(issue: Issue) {
@@ -230,8 +234,16 @@ export class CountMetrics {
     }
   }
 
-  addReview(_issue: Issue) {
-    this.reviews += 1;
+  addReview(review: Review) {
+    if (review.isTeamReview) {
+      this.teamReviewCount++;
+    } else {
+      this.otherReviewCount += 1;
+    }
+  }
+
+  get totalReviewCount() {
+    return this.teamReviewCount + this.otherReviewCount;
   }
 }
 
@@ -313,29 +325,102 @@ class HttpClient {
       }),
     };
   }
+  
+  get queryOptions() {
+    return { ...this.options, method: 'post' };
+  }
 
-  async GET(url: string): Promise<any> {
+  async GET(url: string): Promise<object> {
     return fetch(url, this.options).then(res => res.json());
+  }
+
+  async QUERY(url: string, query: string): Promise<object> {
+    return fetch(url, { ...this.queryOptions, body: JSON.stringify({ query }) }).then(res => res.json());
   }
 }
 
 let http: HttpClient;
 
-async function fetchPRs(repo: string, usernames: string[]): Promise<Issue[]> {
-  console.log(`fetching data - repo: ${repo} - usernames: ${usernames}`);
+async function fetchReviews(usernames: string[]): Promise<Review[]> {
+  console.log(`fetching reviews - usernames: ${usernames}`);
 
-  if (!http) {
-    let { username, token } = config;
-    http = new HttpClient(username, token);
+  let { username, token } = config;
+  http = new HttpClient(username, token);
+
+  const reviewsUrl = 'https://api.github.com/graphql';
+
+  let reviewsPromises = {};
+  for (let username of usernames) {
+    reviewsPromises[username] = http.QUERY(reviewsUrl, `{
+      user(login: "${username}") {
+        login
+        contributionsCollection(
+          from: "${config.startDate.toISOString()}",
+          to: "${config.endDate.toISOString()}"
+        ) {
+          pullRequestReviewContributions(first: 100) {
+            nodes {
+              pullRequest {
+                author {
+                  login
+                }
+                repository {
+                  name
+                }
+                id
+              }
+            }
+          }
+        }
+      }
+    }`);
   }
 
+  let result: Review[] = [];
+  for (let username of usernames) {
+    let { data } = await reviewsPromises[username];
+    let pullRequestsById: { [id: string]: Review } = {};
+    for (let node of data.user.contributionsCollection.pullRequestReviewContributions.nodes) {
+      let { id, author, repository } = node.pullRequest;
+      if (author.login === username || pullRequestsById[id]) {
+        continue;
+      }
+
+      pullRequestsById[id] = {
+        id,
+        repo: repository.name,
+        author: username,
+        isTeamReview: usernames.includes(author.login),
+      };
+    }
+    result.push(...Object.values(pullRequestsById));
+  }
+
+  return result;
+}
+
+async function fetchPRs(repo: string, usernames: string[]): Promise<Issue[]> {
+  console.log(`fetching pull requests - repo: ${repo} - usernames: ${usernames}`);
+
+  let { username, token } = config;
+  http = new HttpClient(username, token);
+
   const issuesUrl = `https://api.github.com/repos/addepar/${repo}/issues`;
+
+  let limit = 100;
+  async function getIssues(queryParams: string, page: number = 1): Promise<Issue[]> {
+    let result = await http.GET(`${issuesUrl}?per_page=${limit}&page=${page}&pulls=true&${queryParams}`) as Issue[];
+    if (result.length === limit) {
+      result = result.concat(await getIssues(queryParams, ++page));
+    }
+    return result;
+  }
 
   let openIssuesPromises = {};
   let mergedIssuesPromises = {};
   for (let username of usernames) {
-    openIssuesPromises[username] = http.GET(`${issuesUrl}?creator=${username}&pulls=true&state=open`);
-    mergedIssuesPromises[username] = http.GET(`${issuesUrl}?creator=${username}&pulls=true&state=closed&since=${config.start}`);
+    openIssuesPromises[username] = getIssues(`creator=${username}&state=open`);
+    mergedIssuesPromises[username] = getIssues(`creator=${username}&state=closed&since=${config.start}`);
   }
 
   let issuesById: { [id: string]: Issue; } = {};
@@ -425,7 +510,7 @@ function getTags(issue: Issue): string[] {
 
   return [
     opened_at < config.start ? OLD : NEW,
-    merged_at ? MERGED : OUTSTANDING
+    merged_at ? MERGED : OPEN
   ];
 }
 

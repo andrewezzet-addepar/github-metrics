@@ -1,11 +1,14 @@
-export const REVIEWS = 'reviews';
+export const TEAM_REVIEWS = 'team';
+export const OTHER_REVIEWS = 'other';
+export const TOTAL_REVIEWS = 'total';
+export const REVIEWS = [TEAM_REVIEWS, OTHER_REVIEWS, TOTAL_REVIEWS];
 
 export const DRAFT = 'draft';
 export const OLD = 'old';
 export const NEW = 'new';
 export const MERGED = 'merged';
-export const OUTSTANDING = 'outstanding';
-export const TAGS = [/*DRAFT, */OLD, NEW, MERGED, OUTSTANDING];
+export const OPEN = 'open';
+export const TAGS = [/*DRAFT, */OLD, NEW, MERGED, OPEN];
 
 export const ADDITIONS = 'additions';
 export const DELETIONS = 'deletions';

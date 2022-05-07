@@ -1,5 +1,5 @@
 import config, { FIELD_NAMES, STORED_FIELD_NAMES } from './config';
-import { REVIEWS, TAGS, TIMINGS } from './constants';
+import { TAGS, TIMINGS, REVIEWS } from './constants';
 import { diffSummary, formatDate, humanizeDuration } from './utils';
 import { runMetrics, GroupedBundledMetrics, CountMetrics, TimingMetrics } from "./metrics";
 
@@ -226,7 +226,13 @@ function MetricsTable(title: string, groupedMetrics: GroupedBundledMetrics): HTM
       <thead>
         <tr>
           ${HeaderCell()}
-          ${[...TAGS, ...TIMINGS, REVIEWS].map(field => HeaderCell(field)).join('')}
+          ${HeaderCell("PR's", 4)}
+          ${HeaderCell("Stats", 3)}
+          ${HeaderCell("Reviews", 3)}
+        </tr>
+        <tr>
+          ${HeaderCell()}
+          ${[...TAGS, ...TIMINGS, ...REVIEWS].map(field => HeaderCell(field)).join('')}
         </tr>
       </thead>
       <tbody>
@@ -235,7 +241,9 @@ function MetricsTable(title: string, groupedMetrics: GroupedBundledMetrics): HTM
             ${HeaderCell(category)}
             ${CountsCells(counts.all)}
             ${TimingCells(timings.all)}
-            ${ReviewsCell(counts.all.reviews)}
+            ${ReviewsCell(counts.all.teamReviewCount)}
+            ${ReviewsCell(counts.all.otherReviewCount)}
+            ${ReviewsCell(counts.all.totalReviewCount)}
           </tr>
         `).join('')}
       </tbody>
@@ -245,8 +253,8 @@ function MetricsTable(title: string, groupedMetrics: GroupedBundledMetrics): HTM
   return tableDiv;
 }
 
-function HeaderCell(headerName: string = ''): string {
-  return `<th>${headerName}</th>`;
+function HeaderCell(headerName: string = '', colspan: number = 1): string {
+  return `<th colspan="${colspan}">${headerName}</th>`;
 }
 
 function TableCell(value: string | number): string {
