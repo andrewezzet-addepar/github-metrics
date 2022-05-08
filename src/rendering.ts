@@ -271,9 +271,9 @@ function TimingCells(timings: TimingMetrics): string {
   let avgAdd = additions / entries.length;
   let avgDel = deletions / entries.length;
   return `
-    ${TableCell(humanizeDuration(timings.avgTimeToMerge))}
-    ${TableCell(humanizeDuration(timings.avgTimeToReview))}
     ${TableCell(diffSummary(avgAdd, avgDel))}
+    ${TableCell(humanizeDuration(timings.avgTimeToReview))}
+    ${TableCell(humanizeDuration(timings.avgTimeToMerge))}
   `;
 }
 

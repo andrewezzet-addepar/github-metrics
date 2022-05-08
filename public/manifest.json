@@ -4,7 +4,7 @@
     "name": "GithubMetrics",
     "description": "Fetches metrics on PR's",
     "icons": {
-      "128": "./assets/icon-128.png"
+      "128": "./assets/logo.png"
     },
     "permissions": [
       "storage"
