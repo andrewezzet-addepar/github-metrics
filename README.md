@@ -23,3 +23,20 @@ yarn && yarn build
 
 ##### 5. Click 'Run' and wait a few seconds...
 ![image](https://user-images.githubusercontent.com/72764729/167272869-8e77b28c-96df-4a16-9a63-77424d152db9.png)
+
+### Metrics
+##### 1. PR's (counts, excluding drafts)
+- `old` - pr's that were open before the start date
+- `new` - pr's that were created within the date range
+- `merged` - pr's that were merged within the date range
+- `open` - pr's that are still outstanding as of the end date 
+
+##### 2. Stats
+- `time_to_merge` - the average time from opening a PR for review to that PR being merged
+- `time_to_review` - the average time from opening a PR for review to getting its first review
+- `avg_diff` - the average number of lines changed per PR
+
+##### 3. Reviews
+- `team` - # of reviews for PR's authored by one of the configured `usernames`
+- `other` - # of reviews for PR's authored by someone _not_ in `usernames`
+- `total` - sum of `team + other`
