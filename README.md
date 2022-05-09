@@ -31,7 +31,7 @@ yarn && yarn build
 - `merged` - pr's that were merged within the date range
 - `open` - pr's that are still outstanding as of the end date 
 
-##### 2. Stats
+##### 2. Stats (only counts merged PR's)
 - `time_to_merge` - the average time from opening a PR for review to that PR being merged
 - `time_to_review` - the average time from opening a PR for review to getting its first review
 - `avg_diff` - the average number of lines changed per PR
