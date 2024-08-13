@@ -436,7 +436,7 @@ async function fetchPRs(repo: string, usernames: string[]): Promise<Issue[]> {
     // these API's don't currently support adding an end date
     mergedIssues = mergedIssues.filter(({ closed_at }) => closed_at < config.end);
 
-    let allIssues = openIssues.concat(mergedIssues);
+    let allIssues = openIssues.concat(mergedIssues).filter(({ pull_request }) => pull_request);
 
     // fetch pr, events, and reviews for each issue
     for (let issue of allIssues) {
